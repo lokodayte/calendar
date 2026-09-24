@@ -1,0 +1,87 @@
+# Runs the tests on every push and pull request.
+# On a push to main it then deploys the Worker (Cloudflare) and the website (Firebase Hosting).
+# Needed GitHub secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, FIREBASE_SERVICE_ACCOUNT (see README, Part D).
+
+name: Test and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  worker:
+    name: Deploy Worker (Cloudflare)
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check setup
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets in GitHub (README, Part D)."; exit 1
+          fi
+          if grep -q "PASTE_YOUR_D1_DATABASE_ID_HERE" wrangler.toml; then
+            echo "::error::Paste your D1 database ID into wrangler.toml (README, Part D step 5)."; exit 1
+          fi
+          if grep -q "YOUR-PROJECT" wrangler.toml; then
+            echo "::warning::ALLOWED_ORIGINS / SITE_URL in wrangler.toml still say YOUR-PROJECT. The website won't be able to talk to the Worker until you fix them."
+          fi
+      - name: Update the database (migrations)
+        run: npx wrangler d1 migrations apply scsm-calendar --remote
+      - name: Deploy the Worker
+        run: npx wrangler deploy
+
+  website:
+    name: Deploy website (Firebase Hosting)
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check setup
+        env:
+          HAS_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::error::Add the FIREBASE_SERVICE_ACCOUNT secret in GitHub (README, Part D)."; exit 1
+          fi
+          if grep -q "YOUR-FIREBASE-PROJECT-ID" .firebaserc; then
+            echo "::error::Put your Firebase project ID in .firebaserc (README, Part D step 6)."; exit 1
+          fi
+          if grep -q "YOUR-NAME.workers.dev" public/config.js; then
+            echo "::warning::public/config.js still has the placeholder Worker address. Paste your real one (README, Part E step 3)."
+          fi
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
