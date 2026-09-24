@@ -7,6 +7,7 @@ export const LIMITS = {
   MAX_TRIES: 5,               // wrong guesses allowed per code
   MAX_CODES_PER_HOUR: 3,      // codes one email can request per hour
   SESSION_DAYS: 365,          // how long a device stays signed in
+  SHORT_SESSION_HOURS: 12,    // when "keep me signed in" is unticked
   MAX_EVENTS_PER_USER: 1000,
   MAX_FEEDS_PER_USER: 10,
   MAX_CALENDARS: 50,

@@ -2,7 +2,7 @@
 
 import { fail, json, readJson } from "./lib/http.js";
 import { hmac, randomCode, randomToken, safeEqual } from "./lib/crypto.js";
-import { normEmail, isEmail, text } from "./lib/validate.js";
+import { normEmail, isEmail, text, bool } from "./lib/validate.js";
 import { LIMITS, getSettings, isAdminEmail } from "./settings.js";
 import { sendEmail, codeEmail } from "./email.js";
 
@@ -79,7 +79,9 @@ export async function verifyCode(req, env) {
   if (!(await mayUseSite(env, email))) { await cancel.run(); fail(400, "This email doesn't have access anymore."); }
 
   const token = randomToken();
-  const expires = now + LIMITS.SESSION_DAYS * 864e5;
+  // "Keep me signed in" (the default) lasts a year; unticked (shared computers) lasts 12 hours.
+  const remember = body.remember === undefined ? true : bool(body.remember);
+  const expires = now + (remember ? LIMITS.SESSION_DAYS * 864e5 : LIMITS.SHORT_SESSION_HOURS * 3600e3);
   await env.DB.batch([
     cancel,
     env.DB.prepare("INSERT INTO sessions (id, email, device, created_at, last_seen, expires_at) VALUES (?, ?, ?, ?, ?, ?)")

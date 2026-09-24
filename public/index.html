@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>SCSM Calendar</title>
+  <meta name="description" content="Staff calendar for the School of Computer Science & Mathematics.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='5' width='26' height='24' rx='5' fill='%232F5BD3'/%3E%3Crect x='3' y='5' width='26' height='7' rx='3' fill='%2318223A'/%3E%3Ccircle cx='11' cy='20' r='2.5' fill='%23fff'/%3E%3Ccircle cx='21' cy='20' r='2.5' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <!-- ============ Loading ============ -->
+  <div id="boot" class="boot" aria-live="polite">Loading…</div>
+
+  <!-- ============ Sign in ============ -->
+  <main id="signin" class="signin" hidden>
+    <div class="signin-card">
+      <div class="brand"><span class="mark" aria-hidden="true"></span><span id="signinTitle">SCSM Calendar</span></div>
+
+      <form id="formEmail" novalidate>
+        <h1>Staff sign-in</h1>
+        <p class="muted">Enter your work email. If you're on the staff list, we'll email you a 6-digit code. No password needed.</p>
+        <label for="inEmail">Work email</label>
+        <input id="inEmail" type="email" autocomplete="email" required placeholder="name@marist.edu" maxlength="254">
+        <p class="err" id="errEmail" role="alert" hidden></p>
+        <button class="btn primary wide" type="submit" id="btnSend">Email me a code</button>
+      </form>
+
+      <form id="formCode" novalidate hidden>
+        <h1>Check your email</h1>
+        <p class="muted" id="codeMsg"></p>
+        <label for="inCode">6-digit code</label>
+        <input id="inCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required placeholder="••••••">
+        <label class="check">
+          <input type="checkbox" id="inRemember" checked>
+          <span>Keep me signed in on this device for a year</span>
+        </label>
+        <p class="warn" id="sharedNote"><b>On a shared or public computer?</b> Untick this box, and sign out when you're done.</p>
+        <p class="err" id="errCode" role="alert" hidden></p>
+        <button class="btn primary wide" type="submit" id="btnVerify">Sign in</button>
+        <button class="link" type="button" id="btnBack">Use a different email or send a new code</button>
+      </form>
+    </div>
+    <p class="signin-foot">Staff and faculty only. Codes may take a minute — check your junk folder too.</p>
+  </main>
+
+  <!-- ============ App ============ -->
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <button class="icon-btn only-phone" id="btnDrawer" type="button" aria-label="Show calendars" aria-controls="sidebar" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div class="brand"><span class="mark" aria-hidden="true"></span><span id="siteTitle">SCSM Calendar</span></div>
+      <nav class="tabs" role="tablist" aria-label="Views">
+        <button role="tab" type="button" data-tab="calendar" aria-selected="true">Calendar</button>
+        <button role="tab" type="button" data-tab="coverage" aria-selected="false">Coverage</button>
+        <button role="tab" type="button" data-tab="admin" aria-selected="false" hidden id="tabAdmin">Admin</button>
+      </nav>
+      <div class="menu-wrap">
+        <button class="avatar" id="btnMe" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Account"></button>
+        <div class="menu" id="meMenu" hidden>
+          <p class="menu-email" id="meEmail"></p>
+          <button class="btn wide" type="button" id="btnSignOut">Sign out of this device</button>
+        </div>
+      </div>
+    </header>
+
+    <div id="devBanner" class="dev-banner" hidden>Local dev mode: sample calendars, and sign-in codes print in the Worker terminal.</div>
+
+    <!-- Calendar -->
+    <section class="view view-calendar" data-view="calendar">
+      <aside class="sidebar" id="sidebar" aria-label="Calendars">
+        <div class="sidebar-head only-phone">
+          <b>Calendars</b>
+          <button class="icon-btn" type="button" id="btnDrawerClose" aria-label="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <button class="btn primary wide" type="button" id="btnAddEvent">+ Add event</button>
+        <h2 class="group">Shared calendars</h2>
+        <ul class="cal-list" id="listShared"></ul>
+        <h2 class="group">My calendars</h2>
+        <ul class="cal-list" id="listMine"></ul>
+        <button class="link" type="button" id="btnAddFeed">+ Add my Outlook or Google calendar</button>
+        <p class="side-foot">Shared calendars refresh about every 20 minutes. Your own events are private — only you can see them.</p>
+      </aside>
+      <div class="scrim" id="scrim" hidden></div>
+      <div class="main">
+        <div id="notices" class="notices" aria-live="polite"></div>
+        <div class="card cal-card"><div id="calendar"></div></div>
+      </div>
+    </section>
+
+    <!-- Coverage -->
+    <section class="view view-coverage" data-view="coverage" hidden>
+      <div id="coverageRoot" class="coverage"></div>
+    </section>
+
+    <!-- Admin -->
+    <section class="view view-admin" data-view="admin" hidden>
+      <div id="adminRoot" class="admin"></div>
+    </section>
+  </div>
+
+  <!-- ============ Dialogs ============ -->
+  <dialog id="dlgEvent" aria-labelledby="evTitle">
+    <div class="dlg">
+      <button class="x" type="button" data-close aria-label="Close">×</button>
+      <div class="ev-stripe" id="evStripe"></div>
+      <h2 id="evTitle"></h2>
+      <dl class="kv">
+        <dt>When</dt><dd id="evWhen"></dd>
+        <dt data-row="loc">Where</dt><dd data-row="loc" id="evLoc"></dd>
+        <dt>Calendar</dt><dd><span class="swatch" id="evSwatch"></span> <span id="evCal"></span></dd>
+        <dt data-row="owner">Contact</dt><dd data-row="owner" id="evOwner"></dd>
+      </dl>
+      <p class="source" id="evSource"></p>
+      <div class="desc" id="evDesc"></div>
+      <div class="dlg-actions" id="evActions" hidden>
+        <button class="btn danger" type="button" id="evDelete">Delete</button>
+        <button class="btn primary" type="button" id="evEdit">Edit</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="dlgEdit" aria-labelledby="editHeading">
+    <form class="dlg" id="formEvent" novalidate>
+      <button class="x" type="button" data-close aria-label="Close">×</button>
+      <h2 id="editHeading">Add event</h2>
+      <label for="feTitle">Title</label>
+      <input id="feTitle" maxlength="200" required>
+      <div class="row2">
+        <div><label for="feDate">Date</label><input id="feDate" type="date" required></div>
+        <label class="check self-end"><input type="checkbox" id="feAllDay"><span>All day</span></label>
+      </div>
+      <div class="row2" id="feTimes">
+        <div><label for="feStart">Starts</label><input id="feStart" type="time" step="300" value="09:00"></div>
+        <div><label for="feEnd">Ends</label><input id="feEnd" type="time" step="300" value="10:00"></div>
+      </div>
+      <label for="feLoc">Location <span class="opt">(optional)</span></label>
+      <input id="feLoc" maxlength="200">
+      <label for="feNotes">Notes <span class="opt">(optional)</span></label>
+      <textarea id="feNotes" rows="3" maxlength="2000"></textarea>
+      <label class="check"><input type="checkbox" id="feRepeat"><span>Repeat every week</span></label>
+      <div id="feRepeatRow" hidden><label for="feUntil">Until</label><input id="feUntil" type="date"></div>
+      <span class="label">Color</span>
+      <div class="swatches" id="feColors"></div>
+      <p class="muted small">Only you can see this event.</p>
+      <p class="err" id="feErr" role="alert" hidden></p>
+      <div class="dlg-actions">
+        <button class="btn" type="button" data-close>Cancel</button>
+        <button class="btn primary" type="submit" id="feSave">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgFeed" aria-labelledby="feedHeading">
+    <form class="dlg" id="formFeed" novalidate>
+      <button class="x" type="button" data-close aria-label="Close">×</button>
+      <h2 id="feedHeading">Add my calendar</h2>
+      <p class="muted">Paste the ICS link of your own Outlook or Google calendar to see it here. It's private — only you see it.</p>
+      <label for="ffName">Name</label>
+      <input id="ffName" maxlength="80" placeholder="My Outlook" required>
+      <label for="ffUrl">ICS link</label>
+      <input id="ffUrl" maxlength="2000" placeholder="https://outlook.office365.com/owa/calendar/…/calendar.ics" autocomplete="off" spellcheck="false">
+      <p class="muted small" id="ffUrlNote" hidden>Leave empty to keep the current link.</p>
+      <details class="help">
+        <summary>Where do I find my ICS link?</summary>
+        <p><b>Outlook on the web:</b> Settings ⚙ → Calendar → Shared calendars → Publish a calendar → choose the calendar and “Can view all details” → Publish → copy the <b>ICS</b> link.</p>
+        <p><b>Google Calendar:</b> Settings → click your calendar → Integrate calendar → copy <b>Secret address in iCal format</b>.</p>
+      </details>
+      <label for="ffSource">Source</label>
+      <select id="ffSource">
+        <option value="">Detect automatically</option>
+        <option value="outlook">Outlook</option>
+        <option value="google">Google Calendar</option>
+        <option value="apple">Apple Calendar</option>
+        <option value="other">Other</option>
+      </select>
+      <span class="label">Color</span>
+      <div class="swatches" id="ffColors"></div>
+      <p class="err" id="ffErr" role="alert" hidden></p>
+      <div class="dlg-actions">
+        <button class="btn danger" type="button" id="ffDelete" hidden>Remove</button>
+        <span class="grow"></span>
+        <button class="btn" type="button" data-close>Cancel</button>
+        <button class="btn primary" type="submit" id="ffSave">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgConfirm">
+    <div class="dlg">
+      <h2 id="cfTitle"></h2>
+      <p class="muted" id="cfText"></p>
+      <div class="dlg-actions">
+        <button class="btn" type="button" id="cfNo">Cancel</button>
+        <button class="btn danger" type="button" id="cfYes">Yes</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js" integrity="sha384-B1OFx8Gy9GjPu8UbUyXbGQpzll9ubAUQ9agInFJ8NnD7nYG1u/CLR+Sqr5yifl4q" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ical.js@1.5.0/build/ical.min.js" integrity="sha384-6SU9o/kopjziIukGhxSpfo75dojAj0O1JWZ+Z/2FdC6rLs6pJvDmRntnUdMS7ht2" crossorigin="anonymous"></script>
+  <script src="config.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

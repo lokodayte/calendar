@@ -110,6 +110,13 @@ describe("sign-in with an email code", () => {
     assert.equal(boot.data.me.isAdmin, false);
   });
 
+  test("unticking “keep me signed in” gives a 12-hour session instead", async () => {
+    await call("POST", "/api/auth/request", { body: { email: A } });
+    const r = await call("POST", "/api/auth/verify", { body: { email: A, code: lastCodeFor(A), remember: false } });
+    assert.equal(r.status, 200);
+    assert.ok(Math.abs(r.data.expires - (Date.now() + 12 * 3600e3)) < 60e3);
+  });
+
   test("a code can only be used once", async () => {
     await call("POST", "/api/auth/request", { body: { email: A } });
     const code = lastCodeFor(A);
