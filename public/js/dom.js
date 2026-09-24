@@ -76,7 +76,7 @@ export function toast(msg) {
   t.textContent = msg;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.hidden = true), 3500);
+  toastTimer = setTimeout(() => (t.hidden = true), Math.max(3500, String(msg).length * 60));
 }
 
 export function setErr(el, msg) {

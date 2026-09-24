@@ -489,7 +489,7 @@ $("#formFeed").addEventListener("submit", async (e) => {
       $("#dlgFeed").close();
       renderSidebar();
       refreshSources();
-      toast(editingFeed ? "Calendar updated." : "Calendar added. Only you can see it.");
+      toast(r.warning || (editingFeed ? "Calendar updated." : "Calendar added. Only you can see it."));
     } catch (err) { setErr($("#ffErr"), err.message); }
   });
 });

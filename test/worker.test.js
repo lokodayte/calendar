@@ -2,6 +2,9 @@ import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import worker from "../worker/src/index.js";
 import { FakeD1 } from "./helpers/d1.js";
+import { RETRY } from "../worker/src/feeds.js";
+
+RETRY.delaysMs = [0, 0]; // no real waiting in tests
 
 const SITE = "https://scsm.web.app";
 const ADMIN = "boss@marist.edu";
@@ -328,6 +331,32 @@ describe("personal events are private", () => {
     assert.equal((await call("PUT", `/api/my-feeds/${id}`, { token: b, body: { name: "x", color: "#000000" } })).status, 404);
     assert.deepEqual((await call("GET", "/api/my-feeds", { token: b })).data.feeds, []);
     assert.equal((await call("DELETE", `/api/my-feeds/${id}`, { token: a })).status, 200);
+  });
+
+  test("a calendar server that is busy (429) is retried automatically", async () => {
+    const url = "https://calendar.google.com/calendar/ical/x/private-abc/basic.ics";
+    let calls = 0;
+    feeds.set(url, () => (++calls < 3 ? new Response("slow down", { status: 429 }) : new Response(ICS("Busy but fine"))));
+    const a = await signIn(A);
+    const r = await call("POST", "/api/my-feeds", { token: a, body: { name: "My Google", url, color: "#123456" } });
+    assert.equal(r.status, 201);
+    assert.equal(r.data.warning, null);
+    assert.equal(calls, 3);
+  });
+
+  test("a link whose server stays busy is saved with a warning instead of refused", async () => {
+    const url = "https://calendar.google.com/calendar/ical/x/private-abc/basic.ics";
+    feeds.set(url, () => new Response("slow down", { status: 429 }));
+    const a = await signIn(A);
+    const r = await call("POST", "/api/my-feeds", { token: a, body: { name: "My Google", url, color: "#123456" } });
+    assert.equal(r.status, 201);
+    assert.match(r.data.warning, /429/);
+    // Later, when Google answers again, the calendar loads.
+    feeds.set(url, ICS("Now it works"));
+    env.DB.q("DELETE FROM feed_cache");
+    const f = await call("GET", `/api/feeds/mine/${r.data.feed.id}`, { token: a });
+    assert.equal(f.status, 200);
+    assert.match(f.text, /Now it works/);
   });
 
   test("bad personal links are refused", async () => {

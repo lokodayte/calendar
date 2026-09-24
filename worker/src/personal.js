@@ -161,11 +161,20 @@ export async function createMyFeed(req, env, ctx, user) {
   const src = v.source(body.source) || detectSource(url);
   const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM personal_feeds WHERE email = ?").bind(user.email).first("n");
   if (count >= LIMITS.MAX_FEEDS_PER_USER) fail(400, `You can add up to ${LIMITS.MAX_FEEDS_PER_USER} calendar links.`);
-  try { await downloadIcs(env, url); } catch (err) { fail(400, `That link didn't work: ${err.message}.`); }
+  const warning = await checkLink(env, url);
   const row = await env.DB.prepare(
     "INSERT INTO personal_feeds (email, name, color, url, source, created_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id, name, color, url, source",
   ).bind(user.email, name, color, url, src, Date.now()).first();
-  return json({ feed: feedPublic(row) }, 201);
+  return json({ feed: feedPublic(row), warning }, 201);
+}
+
+/** Refuse links that are clearly wrong; accept (with a warning) ones whose server is only busy right now. */
+async function checkLink(env, url) {
+  try { await downloadIcs(env, url); return null; }
+  catch (err) {
+    if (err.temporary) return `Saved, but ${err.message}. It will show up once the calendar answers; we'll keep trying.`;
+    fail(400, `That link didn't work: ${err.message}.`);
+  }
 }
 
 export async function updateMyFeed(req, env, ctx, user, params) {
@@ -173,17 +182,16 @@ export async function updateMyFeed(req, env, ctx, user, params) {
   const body = await readJson(req);
   const cur = await env.DB.prepare("SELECT id, url FROM personal_feeds WHERE id = ? AND email = ?").bind(id, user.email).first();
   if (!cur) fail(404, "Not found.");
-  let url = cur.url;
+  let url = cur.url, warning = null;
   if (body.url) {
     url = v.feedUrl(body.url, { allowSamples: devMode(env) });
-    if (url !== cur.url) {
-      try { await downloadIcs(env, url); } catch (err) { fail(400, `That link didn't work: ${err.message}.`); }
-    }
+    if (url !== cur.url) warning = await checkLink(env, url);
   }
   const row = await env.DB.prepare(
     "UPDATE personal_feeds SET name = ?, color = ?, url = ?, source = ? WHERE id = ? AND email = ? RETURNING id, name, color, url, source",
   ).bind(v.text(body.name, "Name", 80, { required: true }), v.color(body.color), url, v.source(body.source) || detectSource(url), id, user.email).first();
-  return json({ feed: feedPublic(row) });
+  if (url !== cur.url) await dropCache(env, `mine:${id}`).run();
+  return json({ feed: feedPublic(row), warning });
 }
 
 export async function deleteMyFeed(req, env, ctx, user, params) {

@@ -26,24 +26,43 @@ async function gunzip(bytes) {
   return new Response(stream).text();
 }
 
-/** Download an ICS feed right now (no cache). Throws a friendly Error on failure. */
+/** Pauses before retrying a busy calendar server (tests set these to 0). */
+export const RETRY = { delaysMs: [1000, 2500] };
+
+/** A failure that may go away on its own (busy or unreachable server), as opposed to a wrong link. */
+function temporary(message) {
+  const err = new Error(message);
+  err.temporary = true;
+  return err;
+}
+
+/** Download an ICS feed right now (no cache). Throws a friendly Error on failure; err.temporary marks busy/unreachable. */
 export async function downloadIcs(env, url) {
   if (url.startsWith("sample:")) {
     if (!devMode(env)) throw new Error("Sample calendars only work in local dev mode.");
     return sampleIcs(url.slice(7));
   }
   let r;
-  try {
-    r = await fetch(url, {
-      headers: { "user-agent": "SCSM-Calendar/2.0", accept: "text/calendar, text/plain, */*" },
-      redirect: "follow",
-      signal: AbortSignal.timeout(15000),
-    });
-  } catch (err) {
-    throw new Error(err && err.name === "TimeoutError" ? "the calendar took too long to answer" : "the calendar couldn't be reached");
+  for (let attempt = 0; ; attempt++) {
+    try {
+      r = await fetch(url, {
+        headers: { "user-agent": "SCSM-Calendar/2.0", accept: "text/calendar, text/plain, */*" },
+        redirect: "follow",
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch (err) {
+      throw temporary(err && err.name === "TimeoutError" ? "the calendar took too long to answer" : "the calendar couldn't be reached");
+    }
+    // Google in particular answers 429 ("too many requests") to cloud servers now and then; a short wait usually helps.
+    const busy = r.status === 429 || r.status === 503;
+    if (!busy || attempt >= RETRY.delaysMs.length) break;
+    await r.body?.cancel();
+    await new Promise((res) => setTimeout(res, RETRY.delaysMs[attempt]));
   }
-  if (r.status === 404 || r.status === 410) throw new Error("the link no longer works (not found)");
+  if (r.status === 404 || r.status === 410) throw new Error("the link no longer works (not found). For Google, use the “Secret address in iCal format”");
   if (r.status === 401 || r.status === 403) throw new Error("the calendar refused access. Is it still published or shared?");
+  if (r.status === 429) throw temporary("the calendar's server is limiting requests right now (error 429). It usually works again within a few minutes");
+  if (r.status >= 500) throw temporary(`the calendar's server had a problem (error ${r.status})`);
   if (!r.ok) throw new Error(`the calendar answered with error ${r.status}`);
   const len = +(r.headers.get("content-length") || 0);
   if (len > MAX_FEED_BYTES) throw new Error("the calendar is too large");
