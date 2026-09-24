@@ -1,0 +1,28 @@
+# Cloudflare Worker settings (the "helper" behind the website).
+# GitHub Actions deploys this automatically. See README, Part C.
+
+name = "scsm-calendar-api"
+main = "worker/src/index.js"
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "scsm-calendar"
+# ▼ Paste the Database ID from Cloudflare → Storage & Databases → D1 → scsm-calendar
+database_id = "PASTE_YOUR_D1_DATABASE_ID_HERE"
+migrations_dir = "worker/migrations"
+
+[vars]
+# Admins, separated by commas. Admins can always sign in and see the Admin tab.
+ADMIN_EMAILS = "boris.sargsyan1@marist.edu"
+# ▼ Your website address from Firebase (no slash at the end). Several allowed, comma-separated.
+ALLOWED_ORIGINS = "https://YOUR-PROJECT.web.app,https://YOUR-PROJECT.firebaseapp.com"
+# The address sign-in codes come from. Must be verified in Brevo.
+SENDER_EMAIL = "boris.sargsyan1@marist.edu"
+# Link used in welcome emails.
+SITE_URL = "https://YOUR-PROJECT.web.app"
+
+# Secrets are NOT stored here. Add them in Cloudflare → Worker → Settings → Variables and Secrets:
+#   BREVO_API_KEY    from brevo.com
+#   SESSION_SECRET   64 random characters
+# For local testing, copy .dev.vars.example to .dev.vars instead.

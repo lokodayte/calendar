@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Local secrets — never commit these
+.dev.vars
+.env
+.env.*
+*.pem
+*service-account*.json
+firebase-debug.log*
+
+# Local tool state
+.wrangler/
+.firebase/
+.DS_Store
+coverage/

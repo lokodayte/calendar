@@ -1,0 +1,21 @@
+{
+  "name": "scsm-calendar",
+  "private": true,
+  "type": "module",
+  "description": "Staff-only SCSM calendar: Firebase Hosting website + Cloudflare Worker + D1.",
+  "scripts": {
+    "test": "node --test --no-warnings test/",
+    "dev:setup": "wrangler d1 migrations apply scsm-calendar --local && wrangler d1 execute scsm-calendar --local --file worker/dev/seed.sql",
+    "dev": "wrangler dev",
+    "site": "node scripts/serve.js",
+    "db:migrate": "wrangler d1 migrations apply scsm-calendar --remote",
+    "deploy:worker": "wrangler deploy"
+  },
+  "devDependencies": {
+    "ical.js": "1.5.0",
+    "wrangler": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

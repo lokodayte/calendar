@@ -1,0 +1,6 @@
+# Local testing only. Copy this file to ".dev.vars" (it is ignored by git).
+# DEV_MODE prints sign-in codes to the terminal instead of emailing them,
+# allows http://localhost origins, and loads built-in sample calendars.
+DEV_MODE = "true"
+SESSION_SECRET = "local-dev-secret-local-dev-secret-local-dev-secret-0000"
+ADMIN_EMAILS = "boris.sargsyan1@marist.edu"
