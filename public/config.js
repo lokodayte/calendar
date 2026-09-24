@@ -3,7 +3,7 @@
 // It looks like https://scsm-calendar-api.YOUR-NAME.workers.dev — no slash at the end.
 
 window.SCSM_CONFIG = {
-  apiUrl: "https://scsm-calendar-api.YOUR-NAME.workers.dev",
+  apiUrl: "https://scsm-calendar-api.boris0sargsyan.workers.dev",
 };
 
 // Local testing (npm run site + npx wrangler dev) talks to the Worker on your computer.

@@ -9,21 +9,21 @@ compatibility_date = "2026-09-01"
 binding = "DB"
 database_name = "scsm-calendar"
 # ▼ Paste the Database ID from Cloudflare → Storage & Databases → D1 → scsm-calendar
-database_id = "PASTE_YOUR_D1_DATABASE_ID_HERE"
+database_id = "696d8a65-87e3-4932-bcde-5f1b30a3ed14"
 migrations_dir = "worker/migrations"
 
 [vars]
 # Admins, separated by commas. Admins can always sign in and see the Admin tab.
 ADMIN_EMAILS = "boris.sargsyan1@marist.edu"
 # ▼ Your website address from Firebase (no slash at the end). Several allowed, comma-separated.
-ALLOWED_ORIGINS = "https://YOUR-PROJECT.web.app,https://YOUR-PROJECT.firebaseapp.com"
+ALLOWED_ORIGINS = "https://scsm-calendar.web.app,https://scsm-calendar.firebaseapp.com"
 # EmailJS (sends the sign-in code emails). From emailjs.com, see README Part A.
 # These three are not secret. The private key is a Cloudflare secret (EMAILJS_PRIVATE_KEY).
-EMAILJS_SERVICE_ID = "PASTE_SERVICE_ID"
-EMAILJS_TEMPLATE_ID = "PASTE_TEMPLATE_ID"
-EMAILJS_PUBLIC_KEY = "PASTE_PUBLIC_KEY"
+EMAILJS_SERVICE_ID = "service_q0g0rmv"
+EMAILJS_TEMPLATE_ID = "template_bf7s0k4"
+EMAILJS_PUBLIC_KEY = "4Rhjzk_gR3p1Vst5g"
 # Link used in welcome emails.
-SITE_URL = "https://YOUR-PROJECT.web.app"
+SITE_URL = "https://scsm-calendar.web.app"
 
 # Secrets are NOT stored here. Add them in Cloudflare → Worker → Settings → Variables and Secrets:
 #   EMAILJS_PRIVATE_KEY   from emailjs.com → Account → API keys
