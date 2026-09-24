@@ -7,14 +7,14 @@ A private calendar website for SCSM staff and faculty. It shows several shared c
 - **Everyone chooses what they see.** Each calendar has an on/off switch, and the choices follow the person to any device.
 - **Private events.** Events you add are visible only to you.
 - **Desk coverage.** Shows who's on shift now, who's next, a week grid of covered and uncovered times, and a list of gaps you can copy.
-- **Free.** Everything runs on free plans: Cloudflare, Firebase, Brevo and GitHub.
+- **Free.** Everything runs on free plans: Cloudflare, Firebase, EmailJS and GitHub.
 
 ```
  Outlook / Google calendars ─┐
                              ▼
    Website (Firebase) ◀──▶ Helper (Cloudflare Worker) ◀──▶ Database (Cloudflare D1)
                              │
-                             └──▶ Brevo (sends the sign-in code emails)
+                             └──▶ EmailJS → Gmail (sends the sign-in code emails)
 ```
 
 **How it goes live:** you push to the `main` branch on GitHub. GitHub then tests the code and puts the new version online, usually within 2 minutes.
@@ -93,23 +93,38 @@ You'll create 3 free accounts, collect a few keys, and paste them into GitHub. K
 
 > **Tip:** Do the parts in order. Part E needs things from A–D.
 
-### Part A: Brevo (sends the code emails), about 10 minutes
+### Part A: EmailJS (sends the code emails), about 15 minutes
 
-1. Go to **[brevo.com](https://www.brevo.com)**, click **Sign up free**, and create an account. The free plan allows 300 emails a day.
-2. Verify the sender address:
-   1. Click your name (top right) and choose **Senders, Domains & Dedicated IPs**.
-   2. Open **Senders** and click **Add a sender**.
-   3. For the name, enter `SCSM Calendar`. For the email, enter **`boris.sargsyan1@marist.edu`**.
-   4. Save. Brevo emails that address a link: open it and confirm.
-3. Create an API key:
-   1. Click your name and choose **SMTP & API**.
-   2. Open the **API Keys** tab and click **Generate a new API key**.
-   3. Name it `scsm-calendar`, then copy the key.
-   4. Note it down as **BREVO_API_KEY**. Treat it like a password.
+EmailJS sends the emails through a normal Gmail account. **We recommend a new Gmail account just for this**, for example `scsm.calendar@gmail.com`. Codes will come from that address.
 
-> ⚠️ **About sending from a @marist.edu address.** Marist's email servers may treat messages that Brevo sends "from" a marist.edu address as suspicious, because Brevo isn't one of Marist's official senders. Codes may land in junk, or might not arrive at all. Test with your own address first. If codes don't arrive:
-> - ask Marist IT to authorize Brevo for marist.edu (in Brevo, **Senders, Domains → Domains** shows the DNS records they'd add), or
-> - use a separate address that you control as the sender (change `SENDER_EMAIL` in `wrangler.toml`).
+1. **Create the Gmail account** at [accounts.google.com/signup](https://accounts.google.com/signup), if you're making a new one.
+2. Go to **[emailjs.com](https://www.emailjs.com)**, click **Sign Up**, and create a free account.
+3. **Connect Gmail:**
+   1. Click **Email Services → Add New Service → Gmail → Connect Account**.
+   2. Sign in with the calendar's Gmail account and allow **"Send email on your behalf"**.
+   3. Click **Create Service**.
+   4. Copy the **Service ID** (looks like `service_ab12cd3`). **Save as: EmailJS service ID**
+4. **Create the email template:**
+   1. Click **Email Templates → Create New Template**.
+   2. On the right, fill in:
+      - **To Email:** `{{to_email}}`
+      - **From Name:** `{{from_name}}`
+      - Leave **From Email** set to use the default address, and leave **Reply To** empty.
+   3. **Subject:** `{{subject}}`
+   4. **Content:** delete the sample text and type exactly `{{{html_message}}}`. That's **three** curly braces on each side, so the email keeps its formatting.
+      > If the content editor changes the braces, switch it to the code or HTML view, or use `{{message}}` (two braces) for plain text.
+   5. Click **Save**. Open the template's **Settings** tab and copy the **Template ID** (like `template_xy98z`). **Save as: EmailJS template ID**
+5. **Keys and the important setting:**
+   1. Click your account name, then **Account**.
+   2. On the **General** tab, copy the **Public Key**. **Save as: EmailJS public key**
+   3. Still under **Account**, copy the **Private Key**. **Save as: EMAILJS_PRIVATE_KEY** (secret)
+   4. Open the **Security** tab and turn **on** "Allow EmailJS API for non-browser applications". Without this, the helper can't send emails. Also turn on "Use Private Key", then save.
+6. **Test it:** in the template, click **Test It**, put your own email in `to_email` and anything in `subject` and `html_message`, then send. Check that it arrives.
+
+> ⚠️ **EmailJS's free plan is 200 emails a month.** The app sends an email only when someone signs in on a new device, or when you choose to send welcome emails. Tips:
+> - Welcome emails are **off** by default. You can simply tell people the site address yourself.
+> - If the allowance runs out, **nobody can get a sign-in code until next month.** People who are already signed in are fine. The Admin tab's **Settings** section shows a warning when emails start failing.
+> - If this becomes a problem, EmailJS's paid plan or Brevo (300 a day, free) can replace it. The helper already supports Brevo: set `BREVO_API_KEY` and `SENDER_EMAIL` instead.
 
 ### Part B: Cloudflare (the helper and the database), about 15 minutes
 
@@ -160,6 +175,7 @@ You'll create 3 free accounts, collect a few keys, and paste them into GitHub. K
 4. Now edit 3 files in GitHub. Click the file, then the ✏️ pencil icon, then **Commit changes** when you're done.
 5. **`wrangler.toml`:**
    - Replace `PASTE_YOUR_D1_DATABASE_ID_HERE` with your **D1 database ID**.
+   - Replace `PASTE_SERVICE_ID`, `PASTE_TEMPLATE_ID` and `PASTE_PUBLIC_KEY` with your **EmailJS service ID**, **template ID** and **public key** from Part A. These three aren't secret.
    - In `ALLOWED_ORIGINS` and `SITE_URL`, replace `YOUR-PROJECT` with your **Firebase project ID**. For example: `https://scsm-calendar-1a2b3.web.app,https://scsm-calendar-1a2b3.firebaseapp.com`.
 6. **`.firebaserc`:** replace `YOUR-FIREBASE-PROJECT-ID` with your **Firebase project ID**.
 7. **`public/config.js`:** replace `YOUR-NAME` with your workers.dev subdomain from Part B, step 2. For example: `https://scsm-calendar-api.scsm.workers.dev`.
@@ -176,7 +192,7 @@ Each commit starts a deploy. Early ones may fail until everything is filled in, 
 
    | Name | Value |
    |---|---|
-   | `BREVO_API_KEY` | the Brevo key from Part A |
+   | `EMAILJS_PRIVATE_KEY` | the EmailJS private key from Part A |
    | `SESSION_SECRET` | 64 random letters and numbers. Use a password generator (for example, 1Password's "Generate password", 64 characters, no symbols). |
 
    4. Click **Deploy** if Cloudflare asks. You don't need to redeploy from GitHub.
@@ -268,7 +284,7 @@ Rough numbers, assuming each person opens the site about 3 times a workday. Chec
 | D1 reads | 5 million rows/day | ~20,000–50,000/day | Sessions and settings are looked up by key. |
 | D1 writes | 100,000 rows/day | ~1,000–3,000/day | Mostly feed refreshes (at most 72 per calendar per day, and only when someone is looking). "Last seen" is saved at most twice a day per device. |
 | D1 storage | 5 GB | under 50 MB | Feeds are stored compressed. |
-| Brevo | 300 emails/day | ~5–20/day | Emails go out only when a device signs in for the first time, or when welcome emails are sent. |
+| EmailJS | **200 emails/month** | ~5–20/day at the start, then a few a week | Emails go out only when a device signs in for the first time, or when welcome emails are sent. **This is the tightest limit.** Launch month can use most of it, so keep welcome emails to a minimum. |
 | Firebase Hosting | 10 GB stored, 360 MB/day transfer | ~20–50 MB/day | FullCalendar and ical.js load from the jsDelivr CDN, which doesn't count. |
 | GitHub Actions | 2,000 min/month (private repo) | ~2 min per push | Public repos are unlimited. |
 
@@ -292,7 +308,7 @@ Rough numbers, assuming each person opens the site about 3 times a workday. Chec
 - **CORS allows only your website address**, from `ALLOWED_ORIGINS` in `wrangler.toml`.
 - **Inputs are checked and size-limited.** Text people type is always shown as plain text, never as HTML.
 - **The website sends strict security headers** (Content-Security-Policy and others), and the CDN scripts are pinned with integrity hashes.
-- **Secrets stay out of the repo.** `BREVO_API_KEY` and `SESSION_SECRET` live in Cloudflare secrets only. `.gitignore` blocks `.dev.vars`, `.env` files and key files.
+- **Secrets stay out of the repo.** `EMAILJS_PRIVATE_KEY` and `SESSION_SECRET` live in Cloudflare secrets only. Emails are sent by the helper, never from the web page, so the code and the key never reach the browser. `.gitignore` blocks `.dev.vars`, `.env` files and key files.
 - **Personal events are kept when someone is removed**, in case they come back. To delete someone's data completely, ask a developer to run a delete on the D1 tables for that email.
 
 ---
@@ -304,7 +320,7 @@ Rough numbers, assuming each person opens the site about 3 times a workday. Chec
 | The page says *"isn't connected to its Worker yet"* | `public/config.js` still has `YOUR-NAME` (Part D, step 7). |
 | *"This site isn't allowed to use the calendar service"* | `ALLOWED_ORIGINS` in `wrangler.toml` must be exactly your site address, with no slash at the end. |
 | *"The server isn't set up yet: SESSION_SECRET is missing"* | Part E, step 2. |
-| No code email arrives | Check junk. In Brevo, **Transactional → Logs** shows whether the email was sent or blocked. See the ⚠️ note in Part A. In Cloudflare, **Worker → Logs** shows "Brevo error". |
+| No code email arrives | Check junk. Open **Admin → Settings**: a yellow warning there shows the exact problem. In EmailJS, the **Email History** page shows each send. The usual causes are: the monthly limit is reached, "Allow EmailJS API for non-browser applications" is off, or the template's **To Email** isn't `{{to_email}}`. |
 | *"Couldn't load Club Events right now. Showing the last saved copy."* | The Outlook or Google link is down or was unpublished. In **Admin → Shared calendars → Edit → Test link**, check the error. |
 | A GitHub Actions run is red | Click it, then open the red step. The first lines say what's missing. |
 | Coverage says "No shift calendar yet" | Edit the Student Work Schedule and tick **Shift calendar**. |

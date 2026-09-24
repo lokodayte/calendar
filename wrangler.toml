@@ -17,12 +17,15 @@ migrations_dir = "worker/migrations"
 ADMIN_EMAILS = "boris.sargsyan1@marist.edu"
 # ▼ Your website address from Firebase (no slash at the end). Several allowed, comma-separated.
 ALLOWED_ORIGINS = "https://YOUR-PROJECT.web.app,https://YOUR-PROJECT.firebaseapp.com"
-# The address sign-in codes come from. Must be verified in Brevo.
-SENDER_EMAIL = "boris.sargsyan1@marist.edu"
+# EmailJS (sends the sign-in code emails). From emailjs.com, see README Part A.
+# These three are not secret. The private key is a Cloudflare secret (EMAILJS_PRIVATE_KEY).
+EMAILJS_SERVICE_ID = "PASTE_SERVICE_ID"
+EMAILJS_TEMPLATE_ID = "PASTE_TEMPLATE_ID"
+EMAILJS_PUBLIC_KEY = "PASTE_PUBLIC_KEY"
 # Link used in welcome emails.
 SITE_URL = "https://YOUR-PROJECT.web.app"
 
 # Secrets are NOT stored here. Add them in Cloudflare → Worker → Settings → Variables and Secrets:
-#   BREVO_API_KEY    from brevo.com
-#   SESSION_SECRET   64 random characters
+#   EMAILJS_PRIVATE_KEY   from emailjs.com → Account → API keys
+#   SESSION_SECRET        64 random characters
 # For local testing, copy .dev.vars.example to .dev.vars instead.

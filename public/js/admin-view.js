@@ -61,12 +61,12 @@ export function initAdmin(root, ctx) {
 
   function renderStaff() {
     const ta = h("textarea", { rows: 3, placeholder: "name@marist.edu, other@marist.edu…\nYou can paste a whole list, one per line or separated by commas.", "aria-label": "Emails to add" });
-    const welcome = h("input", { type: "checkbox", checked: true });
+    const welcome = h("input", { type: "checkbox" });
     const result = h("p", { class: "muted", hidden: true });
     const addBtn = h("button", { class: "btn primary", type: "submit", text: "Add to staff list" });
     const form = h("form", { class: "inline-form", novalidate: true },
       ta,
-      h("div", { class: "inline-row" }, h("label", { class: "check" }, welcome, h("span", { text: "Send them a welcome email with the site link" })), h("span", { class: "grow" }), addBtn),
+      h("div", { class: "inline-row" }, h("label", { class: "check" }, welcome, h("span", { text: "Send them a welcome email with the site link (uses your monthly email allowance; up to 20 at a time)" })), h("span", { class: "grow" }), addBtn),
       result);
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -388,7 +388,12 @@ export function initAdmin(root, ctx) {
     setPanel.replaceChildren(
       h("h2", { text: "Settings" }),
       field("Site title", title),
-      field("Sender name for emails", sender, s.senderEmail ? `Emails come from ${s.senderEmail} (set SENDER_EMAIL in wrangler.toml to change it).` : "SENDER_EMAIL isn't set in wrangler.toml, so emails can't be sent."),
+      field("Sender name for emails", sender, {
+        emailjs: "Emails are sent through EmailJS, from the Gmail or Outlook account connected there. Free plan: 200 emails a month.",
+        brevo: "Emails are sent through Brevo.",
+        dev: "Local dev mode: emails are printed in the Worker terminal.",
+      }[s.emailProvider] || "No email service is set up yet, so sign-in codes can't be sent. See README, Part A."),
+      s.emailStatus ? h("p", { class: "warn", text: `Emails are failing (last problem ${fmtStamp(s.emailStatus.at)}): ${s.emailStatus.error}. Staff may not be getting sign-in codes. If EmailJS says the limit is reached, it resets at the start of next month.` }) : null,
       s.siteUrl ? h("p", { class: "muted small", text: `Link in welcome emails: ${s.siteUrl}` }) : null,
       err, h("div", {}, save));
   }

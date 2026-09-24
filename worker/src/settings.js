@@ -12,7 +12,7 @@ export const LIMITS = {
   MAX_FEEDS_PER_USER: 10,
   MAX_CALENDARS: 50,
   MAX_STAFF_PER_PASTE: 200,
-  MAX_WELCOME_EMAILS: 50,
+  MAX_WELCOME_EMAILS: 20,     // EmailJS's free plan is 200 emails a month
 };
 
 const DEFAULTS = { site_title: "SCSM Calendar", sender_name: "SCSM Calendar" };

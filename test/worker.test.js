@@ -10,7 +10,7 @@ const B = "bob@marist.edu";
 const ICS = (title = "Club meeting") =>
   `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:1\r\nDTSTART:20261001T160000Z\r\nDTEND:20261001T170000Z\r\nSUMMARY:${title}\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:2\r\nDTSTART:20261002T160000Z\r\nDTEND:20261002T170000Z\r\nSUMMARY:Front desk: Sam\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`;
 
-let env, outbox, feeds, feedHits, realFetch;
+let env, outbox, feeds, feedHits, realFetch, emailFails;
 
 beforeEach(() => {
   env = {
@@ -18,20 +18,31 @@ beforeEach(() => {
     ADMIN_EMAILS: ADMIN,
     SESSION_SECRET: "test-secret-test-secret-test-secret-1234",
     ALLOWED_ORIGINS: SITE,
-    SENDER_EMAIL: ADMIN,
-    BREVO_API_KEY: "test-key",
+    EMAILJS_SERVICE_ID: "service_test",
+    EMAILJS_TEMPLATE_ID: "template_test",
+    EMAILJS_PUBLIC_KEY: "public_test",
+    EMAILJS_PRIVATE_KEY: "private_test",
     SITE_URL: SITE,
   };
   env.DB.q("INSERT INTO staff (email, added_at) VALUES (?, 0), (?, 0)", A, B);
   outbox = [];
   feeds = new Map();
   feedHits = 0;
+  emailFails = false;
   realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init = {}) => {
     url = String(url);
+    if (url === "https://api.emailjs.com/api/v1.0/email/send") {
+      if (emailFails) return new Response("The monthly limit is reached", { status: 426 });
+      const body = JSON.parse(init.body);
+      assert.deepEqual([body.service_id, body.template_id, body.user_id, body.accessToken], ["service_test", "template_test", "public_test", "private_test"]);
+      const p = body.template_params;
+      outbox.push({ via: "emailjs", to: p.to_email, subject: p.subject, text: p.message, html: p.html_message });
+      return new Response("OK", { status: 200 });
+    }
     if (url === "https://api.brevo.com/v3/smtp/email") {
       const body = JSON.parse(init.body);
-      outbox.push({ to: body.to[0].email, subject: body.subject, text: body.textContent, html: body.htmlContent });
+      outbox.push({ via: "brevo", to: body.to[0].email, subject: body.subject, text: body.textContent, html: body.htmlContent });
       return new Response("{}", { status: 201 });
     }
     feedHits++;
@@ -455,6 +466,44 @@ describe("calendar feeds", () => {
     const r = await call("GET", `/api/feeds/shared/${id}`, { token: a });
     assert.equal(r.status, 502);
     assert.match(r.data.error, /Couldn't load Club Events right now/);
+  });
+});
+
+describe("email", () => {
+  test("codes go out through EmailJS with the private key kept on the server", async () => {
+    await call("POST", "/api/auth/request", { body: { email: A } });
+    assert.equal(outbox[0].via, "emailjs");
+    assert.match(outbox[0].subject, /^\d{6} is your SCSM Calendar code$/);
+  });
+
+  test("failures are shown to the admin, look the same to the person signing in, and clear after a success", async () => {
+    const admin = await signIn(ADMIN);
+    emailFails = true;
+    const r = await call("POST", "/api/auth/request", { body: { email: A } });
+    assert.equal(r.status, 200);
+    let s = (await call("GET", "/api/admin/settings", { token: admin })).data;
+    assert.equal(s.emailProvider, "emailjs");
+    assert.match(s.emailStatus.error, /monthly limit/);
+    emailFails = false;
+    await call("POST", "/api/auth/request", { body: { email: B } });
+    s = (await call("GET", "/api/admin/settings", { token: admin })).data;
+    assert.equal(s.emailStatus, null);
+  });
+
+  test("Brevo still works if it's set up instead", async () => {
+    for (const k of ["EMAILJS_SERVICE_ID", "EMAILJS_TEMPLATE_ID", "EMAILJS_PUBLIC_KEY", "EMAILJS_PRIVATE_KEY"]) delete env[k];
+    Object.assign(env, { BREVO_API_KEY: "k", SENDER_EMAIL: ADMIN });
+    await call("POST", "/api/auth/request", { body: { email: A } });
+    assert.equal(outbox[0].via, "brevo");
+  });
+
+  test("with no email service set up, the reply is still the same and the admin can see why", async () => {
+    delete env.EMAILJS_PRIVATE_KEY;
+    const r = await call("POST", "/api/auth/request", { body: { email: A } });
+    assert.equal(r.status, 200);
+    assert.equal(outbox.length, 0);
+    const [row] = env.DB.q("SELECT value FROM settings WHERE key = 'email_status'");
+    assert.match(JSON.parse(row.value).error, /No email service/);
   });
 });
 

@@ -52,6 +52,9 @@ jobs:
           if grep -q "PASTE_YOUR_D1_DATABASE_ID_HERE" wrangler.toml; then
             echo "::error::Paste your D1 database ID into wrangler.toml (README, Part D step 5)."; exit 1
           fi
+          if grep -q "PASTE_SERVICE_ID\|PASTE_TEMPLATE_ID\|PASTE_PUBLIC_KEY" wrangler.toml; then
+            echo "::warning::The EmailJS IDs in wrangler.toml are still placeholders. Sign-in codes can't be sent until you fill them in (README, Part D step 5)."
+          fi
           if grep -q "YOUR-PROJECT" wrangler.toml; then
             echo "::warning::ALLOWED_ORIGINS / SITE_URL in wrangler.toml still say YOUR-PROJECT. The website won't be able to talk to the Worker until you fix them."
           fi

@@ -2,30 +2,79 @@ import { devMode, LIMITS } from "./settings.js";
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-/** Send one email through Brevo. In DEV_MODE the email is printed to the terminal instead. */
+/** Which email service is set up: "emailjs", "brevo" or null. */
+export function emailProvider(env) {
+  if (env.EMAILJS_PRIVATE_KEY && env.EMAILJS_SERVICE_ID && env.EMAILJS_TEMPLATE_ID && env.EMAILJS_PUBLIC_KEY) return "emailjs";
+  if (env.BREVO_API_KEY && env.SENDER_EMAIL) return "brevo";
+  return null;
+}
+
+/**
+ * Send one email through EmailJS (or Brevo, if that's what is set up).
+ * In DEV_MODE the email is printed to the terminal instead.
+ * Failures are remembered in settings.email_status so the Admin tab can warn about them.
+ */
 export async function sendEmail(env, senderName, { to, subject, text, html }) {
   if (devMode(env)) {
     console.log(`\n──── EMAIL (dev mode, not sent) ────\nTo: ${to}\nSubject: ${subject}\n\n${text}\n────────────────────────────────────\n`);
     return true;
   }
-  if (!env.BREVO_API_KEY || !env.SENDER_EMAIL) {
-    console.error("Email not sent: BREVO_API_KEY or SENDER_EMAIL is missing.");
-    return false;
+  const provider = emailProvider(env);
+  let error = null;
+  if (!provider) {
+    error = "No email service is set up (EmailJS keys are missing).";
+  } else {
+    try {
+      const r = provider === "emailjs"
+        ? await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            service_id: env.EMAILJS_SERVICE_ID,
+            template_id: env.EMAILJS_TEMPLATE_ID,
+            user_id: env.EMAILJS_PUBLIC_KEY,
+            accessToken: env.EMAILJS_PRIVATE_KEY,
+            template_params: { to_email: to, subject, message: text, html_message: html, from_name: senderName || "SCSM Calendar" },
+          }),
+        })
+        : await fetch("https://api.brevo.com/v3/smtp/email", {
+          method: "POST",
+          headers: { "api-key": env.BREVO_API_KEY, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({
+            sender: { email: env.SENDER_EMAIL, name: senderName || "SCSM Calendar" },
+            to: [{ email: to }],
+            subject,
+            textContent: text,
+            htmlContent: html,
+          }),
+        });
+      if (!r.ok) error = `${provider === "emailjs" ? "EmailJS" : "Brevo"} said: ${r.status} ${(await r.text().catch(() => "")).slice(0, 200)}`;
+    } catch (err) {
+      error = `Couldn't reach ${provider === "emailjs" ? "EmailJS" : "Brevo"}: ${err && err.message}`;
+    }
   }
-  const r = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method: "POST",
-    headers: { "api-key": env.BREVO_API_KEY, "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify({
-      sender: { email: env.SENDER_EMAIL, name: senderName || "SCSM Calendar" },
-      to: [{ email: to }],
-      subject,
-      textContent: text,
-      htmlContent: html,
-    }),
-  });
-  if (!r.ok) console.error("Brevo error", r.status, (await r.text().catch(() => "")).slice(0, 300));
-  return r.ok;
+  if (error) console.error("Email not sent.", error);
+  await noteEmailStatus(env, error);
+  return !error;
 }
+
+/** Save the latest failure (or clear it after a success). Writes only when the state changes. */
+async function noteEmailStatus(env, error) {
+  try {
+    const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'email_status'").first();
+    if (!error && !row) return;
+    if (error) {
+      await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('email_status', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .bind(JSON.stringify({ at: Date.now(), error })).run();
+    } else {
+      await env.DB.prepare("DELETE FROM settings WHERE key = 'email_status'").run();
+    }
+  } catch { /* never let bookkeeping break sign-in */ }
+}
+
+/** EmailJS allows about 1 email per second; pause between emails sent in a row. */
+export const pauseBetweenEmails = (env) =>
+  emailProvider(env) === "emailjs" && !devMode(env) ? new Promise((r) => setTimeout(r, 1100)) : Promise.resolve();
 
 const wrap = (inner) => `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#18223a;max-width:480px">${inner}</div>`;
 

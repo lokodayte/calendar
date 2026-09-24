@@ -4,7 +4,7 @@ import { fail, json, readJson } from "./lib/http.js";
 import * as v from "./lib/validate.js";
 import { LIMITS, adminEmails, getSettings, devMode } from "./settings.js";
 import { detectSource, downloadIcs, dropCache, summarizeIcs } from "./feeds.js";
-import { sendEmail, welcomeEmail } from "./email.js";
+import { sendEmail, welcomeEmail, emailProvider, pauseBetweenEmails } from "./email.js";
 import { normalizeCoverage } from "../../public/js/coverage.js";
 
 const logStmt = (env, actor, action, detail) =>
@@ -49,7 +49,10 @@ export async function addStaff(req, env, ctx, user) {
   if (welcome && added.length) {
     const s = await getSettings(env);
     const mail = welcomeEmail(s.site_title, env.SITE_URL);
-    for (const to of added) (await sendEmail(env, s.sender_name, { to, ...mail })) ? welcomed++ : welcomeFailed++;
+    for (const [i, to] of added.entries()) {
+      if (i) await pauseBetweenEmails(env);
+      (await sendEmail(env, s.sender_name, { to, ...mail })) ? welcomed++ : welcomeFailed++;
+    }
   }
   return json({ added, already, welcomed, welcomeFailed });
 }
@@ -203,7 +206,11 @@ export async function testFeed(req, env) {
 
 export async function getAdminSettings(req, env) {
   const s = await getSettings(env);
-  return json({ siteTitle: s.site_title, senderName: s.sender_name, coverage: s.coverage, senderEmail: env.SENDER_EMAIL || "", siteUrl: env.SITE_URL || "" });
+  return json({
+    siteTitle: s.site_title, senderName: s.sender_name, coverage: s.coverage, siteUrl: env.SITE_URL || "",
+    emailProvider: emailProvider(env) || (devMode(env) ? "dev" : null),
+    emailStatus: s.email_status && s.email_status.error ? s.email_status : null,
+  });
 }
 
 export async function saveAdminSettings(req, env, ctx, user) {
