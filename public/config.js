@@ -1,5 +1,5 @@
 // ─── Website settings ────────────────────────────────────────────────
-// After your first deploy, paste your Worker's address below (README, Part C, step 9).
+// Your Worker's address (README, Part D step 7).
 // It looks like https://scsm-calendar-api.YOUR-NAME.workers.dev — no slash at the end.
 
 window.SCSM_CONFIG = {
