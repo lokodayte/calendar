@@ -32,3 +32,8 @@ SITE_URL = "https://scsm-calendar.web.app"
 #   EMAILJS_PRIVATE_KEY   from emailjs.com → Account → API keys
 #   SESSION_SECRET        64 random characters
 # For local testing, copy .dev.vars.example to .dev.vars instead.
+
+# Save the Worker's logs (Cloudflare → Worker → Observability) so errors such as
+# "Email not sent" can be read later. Free plan includes this.
+[observability]
+enabled = true
