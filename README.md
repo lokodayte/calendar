@@ -1,0 +1,326 @@
+# SCSM Calendar
+
+A private calendar website for SCSM staff and faculty. It shows several shared calendars in one place (Student Work Schedule, School Events, Club Events, Social Media and more). Each person can also add private events of their own. The **Coverage** tab shows who is at the front desk, and when nobody is.
+
+- **Staff only.** People sign in with a 6-digit code sent to their work email. There are no passwords.
+- **Remembers each device** for a year. People can sign out of a device at any time, and the admin can sign anyone out.
+- **Everyone chooses what they see.** Each calendar has an on/off switch, and the choices follow the person to any device.
+- **Private events.** Events you add are visible only to you.
+- **Desk coverage.** Shows who's on shift now, who's next, a week grid of covered and uncovered times, and a list of gaps you can copy.
+- **Free.** Everything runs on free plans: Cloudflare, Firebase, Brevo and GitHub.
+
+```
+ Outlook / Google calendars ─┐
+                             ▼
+   Website (Firebase) ◀──▶ Helper (Cloudflare Worker) ◀──▶ Database (Cloudflare D1)
+                             │
+                             └──▶ Brevo (sends the sign-in code emails)
+```
+
+**How it goes live:** you push to the `main` branch on GitHub. GitHub then tests the code and puts the new version online, usually within 2 minutes.
+
+---
+
+## Contents
+
+1. [What's in this folder](#whats-in-this-folder)
+2. [Try it on your computer first](#try-it-on-your-computer-first-optional)
+3. [One-time setup](#one-time-setup) (Parts A–F, about 1 hour)
+4. [Getting a calendar's ICS link](#getting-a-calendars-ics-link)
+5. [Daily use for the admin](#daily-use-for-the-admin)
+6. [A short guide for staff](#a-short-guide-for-staff)
+7. [Free-plan limits with ~100 staff](#free-plan-limits-with-100-staff)
+8. [Security](#security)
+9. [Troubleshooting](#troubleshooting)
+10. [For developers](#for-developers)
+
+---
+
+## What's in this folder
+
+| Path | What it is |
+|---|---|
+| `public/` | The website (plain HTML, CSS and JavaScript, with no build step). |
+| `public/config.js` | The **only website file you edit**: it holds the Worker's address. |
+| `worker/src/` | The helper that runs on Cloudflare. It handles sign-in, calendars, private events and the admin tools. |
+| `worker/migrations/` | The database tables (SQL files). They are applied automatically. |
+| `wrangler.toml` | Cloudflare settings: the database ID, admin emails and website address. |
+| `firebase.json`, `.firebaserc` | Firebase Hosting settings and your project ID. |
+| `.github/workflows/deploy.yml` | The automatic test-and-deploy steps. |
+| `test/` | Automated tests (`npm test`). |
+
+---
+
+## Try it on your computer first (optional)
+
+This runs the whole app on your computer with sample calendars. No accounts are needed, and emails aren't sent: sign-in codes are printed in the terminal instead.
+
+1. Install **Node.js 22 or newer** from [nodejs.org](https://nodejs.org) (the "LTS" button).
+2. Open a terminal in this folder and run these once:
+   ```bash
+   npm install
+   ```
+   ```bash
+   cp .dev.vars.example .dev.vars
+   ```
+   ```bash
+   npm run dev:setup
+   ```
+3. Start the helper (leave this terminal open):
+   ```bash
+   npx wrangler dev
+   ```
+4. In a **second** terminal, start the website:
+   ```bash
+   npm run site
+   ```
+5. Open **http://localhost:5500** and sign in:
+   - As the admin, with `boris.sargsyan1@marist.edu`.
+   - As regular staff, with `staff@marist.edu` or `elina@marist.edu`.
+6. Look in the **first** terminal for a box like this, and type the code:
+   ```
+   ──── EMAIL (dev mode, not sent) ────
+   Subject: 123456 is your SCSM Calendar code
+   ```
+
+The sample Student Work Schedule is already marked as a shift calendar, so the Coverage tab has data for this week. To start over with fresh sample data, run `npm run dev:setup` again.
+
+---
+
+## One-time setup
+
+You'll create 3 free accounts, collect a few keys, and paste them into GitHub. Keep a text file open to note things down as you go. The steps below tell you exactly what to note.
+
+> **Tip:** Do the parts in order. Part E needs things from A–D.
+
+### Part A: Brevo (sends the code emails), about 10 minutes
+
+1. Go to **[brevo.com](https://www.brevo.com)**, click **Sign up free**, and create an account. The free plan allows 300 emails a day.
+2. Verify the sender address:
+   1. Click your name (top right) and choose **Senders, Domains & Dedicated IPs**.
+   2. Open **Senders** and click **Add a sender**.
+   3. For the name, enter `SCSM Calendar`. For the email, enter **`boris.sargsyan1@marist.edu`**.
+   4. Save. Brevo emails that address a link: open it and confirm.
+3. Create an API key:
+   1. Click your name and choose **SMTP & API**.
+   2. Open the **API Keys** tab and click **Generate a new API key**.
+   3. Name it `scsm-calendar`, then copy the key.
+   4. Note it down as **BREVO_API_KEY**. Treat it like a password.
+
+> ⚠️ **About sending from a @marist.edu address.** Marist's email servers may treat messages that Brevo sends "from" a marist.edu address as suspicious, because Brevo isn't one of Marist's official senders. Codes may land in junk, or might not arrive at all. Test with your own address first. If codes don't arrive:
+> - ask Marist IT to authorize Brevo for marist.edu (in Brevo, **Senders, Domains → Domains** shows the DNS records they'd add), or
+> - use a separate address that you control as the sender (change `SENDER_EMAIL` in `wrangler.toml`).
+
+### Part B: Cloudflare (the helper and the database), about 15 minutes
+
+1. Go to **[dash.cloudflare.com](https://dash.cloudflare.com)** and sign up (free).
+2. **Choose your workers.dev name.** In the left menu, click **Workers & Pages**. If asked, pick a subdomain, for example `scsm`. Your helper's address will be `https://scsm-calendar-api.<that-name>.workers.dev`.
+3. **Create the database:**
+   1. In the left menu, click **Storage & Databases → D1 SQL Database**, then **Create**.
+   2. Name it exactly **`scsm-calendar`** and click **Create**.
+   3. On the database page, copy the **Database ID** (a long code like `3f2a…`). Note it down as **D1 database ID**.
+4. **Find your Account ID:** go to **Workers & Pages → Overview**. The **Account ID** is on the right. Note it down as **CLOUDFLARE_ACCOUNT_ID**.
+5. **Create an API token** (this lets GitHub deploy for you):
+   1. Click the person icon (top right), then **My Profile → API Tokens → Create Token**.
+   2. Next to **Edit Cloudflare Workers**, click **Use template**.
+   3. Under **Permissions**, click **+ Add more** and choose **Account**, then **D1**, then **Edit**.
+   4. Under **Account Resources**, choose your account. Under **Zone Resources**, choose **All zones**.
+   5. Click **Continue to summary**, then **Create Token**.
+   6. Copy the token. Note it down as **CLOUDFLARE_API_TOKEN**. Cloudflare only shows it once.
+
+### Part C: Firebase (the website), about 10 minutes
+
+1. Go to **[console.firebase.google.com](https://console.firebase.google.com)** and click **Create a project**.
+   1. Name it, for example `scsm-calendar`. Google Analytics isn't needed.
+   2. Stay on the free **Spark** plan. Don't upgrade.
+2. In the left menu, click **Build → Hosting**, then **Get started**. Click **Next** through the screens; you don't need to run the commands they show.
+3. Note down the **Project ID** as **Firebase project ID**. It's in the gear ⚙ menu under **Project settings**, and looks like `scsm-calendar-1a2b3`.
+4. Your website address will be **`https://<project-id>.web.app`**. Note it down.
+5. **Create a deploy key** (this lets GitHub publish the website):
+   1. Open **[console.cloud.google.com/iam-admin/serviceaccounts](https://console.cloud.google.com/iam-admin/serviceaccounts)**, and pick the same project at the top.
+   2. Click **+ Create service account**. Name it `github-deploy` and click **Create and continue**.
+   3. Add the role **Firebase Hosting Admin**. Click **+ Add another role** and add **API Keys Viewer**. Click **Continue**, then **Done**.
+   4. Click the new `github-deploy` account, open the **Keys** tab, click **Add key → Create new key**, choose **JSON**, then **Create**. A file downloads.
+   5. Open that file in a text editor and copy **everything** in it. This is **FIREBASE_SERVICE_ACCOUNT**. Keep the file private and delete it once it's saved in GitHub.
+
+> Shortcut for people who use a terminal: `npx firebase-tools init hosting:github` does step 5 for you and adds the GitHub secret itself.
+
+### Part D: GitHub (secrets and 3 small file edits), about 10 minutes
+
+1. Open your repository on **github.com**.
+2. Go to **Settings → Secrets and variables → Actions**, then click **New repository secret**.
+3. Add these 3 secrets. The name must match exactly; the value is what you noted down.
+
+   | Name | Value | From |
+   |---|---|---|
+   | `CLOUDFLARE_API_TOKEN` | the Cloudflare API token | Part B, step 5 |
+   | `CLOUDFLARE_ACCOUNT_ID` | the Cloudflare Account ID | Part B, step 4 |
+   | `FIREBASE_SERVICE_ACCOUNT` | the whole JSON file's contents | Part C, step 5 |
+
+4. Now edit 3 files in GitHub. Click the file, then the ✏️ pencil icon, then **Commit changes** when you're done.
+5. **`wrangler.toml`:**
+   - Replace `PASTE_YOUR_D1_DATABASE_ID_HERE` with your **D1 database ID**.
+   - In `ALLOWED_ORIGINS` and `SITE_URL`, replace `YOUR-PROJECT` with your **Firebase project ID**. For example: `https://scsm-calendar-1a2b3.web.app,https://scsm-calendar-1a2b3.firebaseapp.com`.
+6. **`.firebaserc`:** replace `YOUR-FIREBASE-PROJECT-ID` with your **Firebase project ID**.
+7. **`public/config.js`:** replace `YOUR-NAME` with your workers.dev subdomain from Part B, step 2. For example: `https://scsm-calendar-api.scsm.workers.dev`.
+
+Each commit starts a deploy. Early ones may fail until everything is filled in, and that's expected.
+
+### Part E: The first deploy and Cloudflare secrets, about 10 minutes
+
+1. On GitHub, open the **Actions** tab. Wait until the latest **Test and deploy** run has 3 green ticks. If one is red, click it: the error says what's missing.
+2. Now add the 2 secrets to the helper in Cloudflare. They are stored only in Cloudflare, never in GitHub.
+   1. Go to Cloudflare **Workers & Pages** and click **scsm-calendar-api**.
+   2. Open **Settings → Variables and Secrets** and click **+ Add**.
+   3. Add these 2, with **Type: Secret** for both:
+
+   | Name | Value |
+   |---|---|
+   | `BREVO_API_KEY` | the Brevo key from Part A |
+   | `SESSION_SECRET` | 64 random letters and numbers. Use a password generator (for example, 1Password's "Generate password", 64 characters, no symbols). |
+
+   4. Click **Deploy** if Cloudflare asks. You don't need to redeploy from GitHub.
+3. Check the helper: open `https://scsm-calendar-api.<your-name>.workers.dev`. It should show `{"ok":true,"service":"SCSM Calendar API"}`.
+
+> Changing `SESSION_SECRET` later signs **everyone** out. Only do it if you think it leaked.
+
+### Part F: First sign-in, about 5 minutes
+
+1. Open your website, `https://<project-id>.web.app`.
+2. Sign in with **boris.sargsyan1@marist.edu**, then enter the code from the email. Check junk too.
+3. Open the **Admin** tab:
+   1. **Shared calendars → + Add shared calendar.** Add each calendar with its ICS link (see the next section) and click **Test link**. For the **Student Work Schedule**, tick **Shift calendar**, then check that the name preview shows the workers' names correctly.
+   2. **Desk coverage:** check the office hours (Mon–Fri, 9–5 by default) and add holidays and breaks.
+   3. **Staff list:** paste everyone's emails, and tick **Send them a welcome email**.
+
+You're live. 🎉
+
+---
+
+## Getting a calendar's ICS link
+
+An **ICS link** is a private web address that lets other apps read a calendar. You need one for each shared calendar. Staff can also paste their own ICS links to overlay their personal calendars.
+
+**Outlook (web, Microsoft 365):**
+1. Open Outlook on the web, then **Settings ⚙ → Calendar → Shared calendars**.
+2. Under **Publish a calendar**, choose the calendar and **Can view all details**, then click **Publish**.
+3. Copy the **ICS** link. (Don't use the HTML link.)
+
+> No "Publish a calendar" option? Marist IT may have turned it off. Ask them to allow publishing for these calendars. You must be an owner or editor of a calendar to publish it.
+
+**Google Calendar:**
+1. Open **Settings**. On the left, click the calendar.
+2. Under **Integrate calendar**, copy the **Secret address in iCal format**. For a public calendar, you can use the **Public address in iCal format**.
+
+**Club Events (Parijat Das's calendar):** ask Parijat to send you the link using the steps above, then add it as a shared calendar with owner `Parijat Das`.
+
+> ICS links are like passwords. Anyone with the link can read the calendar. The app keeps shared links on the server only, and staff never see them.
+
+---
+
+## Daily use for the admin
+
+Everything is done in the **Admin** tab. Every change is recorded under **Recent activity**, with who made it and when.
+
+| Task | How |
+|---|---|
+| Give someone access | **Staff list**: paste their email, tick "welcome email", and click **Add**. |
+| Add many people | Paste the whole list: one per line, comma-separated, or copied from Outlook ("Name &lt;email&gt;" works). |
+| Remove someone | Click **Remove** next to them. They're signed out everywhere immediately. |
+| Someone lost a phone | Click **Devices** next to them, then **Sign out** on that device, or use **Revoke all devices**. |
+| See who's using it | The **Last sign-in** and **Devices** columns. |
+| Add a calendar | **Shared calendars → + Add**, paste the ICS link, then **Test link**. |
+| Change a color, name or contact | **Shared calendars → Edit**. |
+| Change the order in the sidebar | Use the ▲ ▼ arrows. |
+| Make a calendar optional | Edit it and untick **On by default**. Staff can still turn it on. |
+| Add a holiday or break | **Desk coverage → + Add closed dates**, then **Save**. |
+| Change office hours or people needed | **Desk coverage**, then **Save**. |
+| Worker names look wrong in Coverage | Add the extra word to **Words to ignore**. You can test a title right there. |
+| Email the gap list | **Coverage** tab, then **Copy list**, then paste it into Outlook. |
+| Change the site title or email sender name | **Settings**. |
+| Add another admin | Edit `wrangler.toml` on GitHub: `ADMIN_EMAILS = "boris.sargsyan1@marist.edu,new.admin@marist.edu"`. It's live after the automatic deploy. |
+
+**Events themselves** are still edited in Outlook or Google as usual. The website picks up changes within about 20 minutes.
+
+---
+
+## A short guide for staff
+
+*(You can paste this into an email.)*
+
+1. Open **https://&lt;project-id&gt;.web.app** and enter your work email. You'll get a 6-digit code by email (check junk). Enter it, and this device stays signed in for a year.
+   **On a shared or public computer?** Untick "Keep me signed in", and sign out when you're done (click your initial at the top right, then **Sign out of this device**).
+2. Use the switches on the left to show or hide calendars. On a phone, tap ☰. Your choices are saved for all your devices.
+3. **+ Add event** creates a private event that only you can see.
+4. **+ Add my Outlook or Google calendar** shows your own calendar here as well. It's private to you.
+5. Click any event to see where it comes from (for example, "From Outlook — Student Work Schedule").
+6. The **Coverage** tab shows who's at the front desk now, who's next, and this week's gaps.
+
+---
+
+## Free-plan limits with ~100 staff
+
+Rough numbers, assuming each person opens the site about 3 times a workday. Check each provider's current limits, because they change.
+
+| Service | Free limit | What 100 staff use | Notes |
+|---|---|---|---|
+| Cloudflare Workers | 100,000 requests/day | ~2,000–3,000/day | Each visit is about 6–8 requests. |
+| D1 reads | 5 million rows/day | ~20,000–50,000/day | Sessions and settings are looked up by key. |
+| D1 writes | 100,000 rows/day | ~1,000–3,000/day | Mostly feed refreshes (at most 72 per calendar per day, and only when someone is looking). "Last seen" is saved at most twice a day per device. |
+| D1 storage | 5 GB | under 50 MB | Feeds are stored compressed. |
+| Brevo | 300 emails/day | ~5–20/day | Emails go out only when a device signs in for the first time, or when welcome emails are sent. |
+| Firebase Hosting | 10 GB stored, 360 MB/day transfer | ~20–50 MB/day | FullCalendar and ical.js load from the jsDelivr CDN, which doesn't count. |
+| GitHub Actions | 2,000 min/month (private repo) | ~2 min per push | Public repos are unlimited. |
+
+**Built to stay small:** feeds are cached for 20 minutes on the server and 5 minutes in the browser. Coverage is calculated in the browser. Toggle changes are saved once, after you stop clicking. Admin changes are grouped into one database write where possible.
+
+---
+
+## Security
+
+- **Sign-in:**
+  - Codes expire after **10 minutes**, and 5 wrong tries cancel a code.
+  - Each email can request at most **3 codes an hour**.
+  - Codes are stored **hashed**.
+  - The reply is the same whether or not an email is on the list.
+- **Sessions:** one database row per device, and it stores only a hash of the device's token.
+  - Sessions last 365 days, or 12 hours if "Keep me signed in" is unticked.
+  - Removing a person, or revoking their devices, takes effect on their next click.
+- **Every helper request checks the session.** Admin requests also check that the email is in `ADMIN_EMAILS`.
+- **Private data is scoped on the server.** Personal events, choices and calendar links are always looked up by the signed-in person's email, so one person can never read or change another's. There are tests for this.
+- **Shared ICS links never reach the browser.**
+- **CORS allows only your website address**, from `ALLOWED_ORIGINS` in `wrangler.toml`.
+- **Inputs are checked and size-limited.** Text people type is always shown as plain text, never as HTML.
+- **The website sends strict security headers** (Content-Security-Policy and others), and the CDN scripts are pinned with integrity hashes.
+- **Secrets stay out of the repo.** `BREVO_API_KEY` and `SESSION_SECRET` live in Cloudflare secrets only. `.gitignore` blocks `.dev.vars`, `.env` files and key files.
+- **Personal events are kept when someone is removed**, in case they come back. To delete someone's data completely, ask a developer to run a delete on the D1 tables for that email.
+
+---
+
+## Troubleshooting
+
+| Problem | What to check |
+|---|---|
+| The page says *"isn't connected to its Worker yet"* | `public/config.js` still has `YOUR-NAME` (Part D, step 7). |
+| *"This site isn't allowed to use the calendar service"* | `ALLOWED_ORIGINS` in `wrangler.toml` must be exactly your site address, with no slash at the end. |
+| *"The server isn't set up yet: SESSION_SECRET is missing"* | Part E, step 2. |
+| No code email arrives | Check junk. In Brevo, **Transactional → Logs** shows whether the email was sent or blocked. See the ⚠️ note in Part A. In Cloudflare, **Worker → Logs** shows "Brevo error". |
+| *"Couldn't load Club Events right now. Showing the last saved copy."* | The Outlook or Google link is down or was unpublished. In **Admin → Shared calendars → Edit → Test link**, check the error. |
+| A GitHub Actions run is red | Click it, then open the red step. The first lines say what's missing. |
+| Coverage says "No shift calendar yet" | Edit the Student Work Schedule and tick **Shift calendar**. |
+
+---
+
+## For developers
+
+- **Run the tests:** `npm test`. This covers:
+  - **Coverage and ICS** (`test/coverage.test.js`): overlapping and odd-time shifts, closed dates, cancelled and moved occurrences, and the switch back from daylight saving time.
+  - **The Worker** (`test/worker.test.js`): sign-in, sessions, keeping each person's data private, admin-only access, feed caching and CORS. These tests run against real SQLite (Node's `node:sqlite`) through a small D1 stand-in.
+- **Shared code:** `public/js/tz.js`, `ics.js` and `coverage.js` are plain ES modules. The browser, the Worker (bundled by wrangler) and the tests all use the same files.
+- **Changing the database:** add a new numbered file such as `worker/migrations/0002_something.sql`. The deploy applies it automatically.
+- **Main routes:**
+  - Sign-in: `POST /api/auth/request`, `POST /api/auth/verify`, `POST /api/auth/signout`.
+  - Signed-in person: `GET /api/bootstrap`, `PUT /api/prefs`, `GET /api/feeds/shared/:id`, `GET /api/feeds/mine/:id`, `/api/events[/:id]`, `/api/my-feeds[/:id]`.
+  - Admin: `/api/admin/*`.
+  - Access rules are listed in one table in `worker/src/index.js`.
+- **Times:** office hours, personal events and closed dates are wall-clock times in **America/New_York**. The calendar grid shows times in the viewer's own time zone.
