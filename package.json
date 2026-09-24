@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Staff-only SCSM calendar: Firebase Hosting website + Cloudflare Worker + D1.",
   "scripts": {
-    "test": "node --test --no-warnings test/",
+    "test": "node --test --no-warnings \"test/*.test.js\"",
     "dev:setup": "wrangler d1 migrations apply scsm-calendar --local && wrangler d1 execute scsm-calendar --local --file worker/dev/seed.sql",
     "dev": "wrangler dev",
     "site": "node scripts/serve.js",
