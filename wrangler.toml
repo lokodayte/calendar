@@ -4,6 +4,9 @@
 name = "scsm-calendar-api"
 main = "worker/src/index.js"
 compatibility_date = "2026-09-01"
+# Keep settings added in the Cloudflare dashboard when GitHub deploys (so a secret saved
+# without ticking "Secret" isn't wiped by the next deploy).
+keep_vars = true
 
 [[d1_databases]]
 binding = "DB"
