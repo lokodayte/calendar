@@ -24,7 +24,7 @@ ALLOWED_ORIGINS = "https://scsm-calendar.web.app,https://scsm-calendar.firebasea
 # These three are not secret. The private key is a Cloudflare secret (EMAILJS_PRIVATE_KEY).
 EMAILJS_SERVICE_ID = "service_q0g0rmv"
 EMAILJS_TEMPLATE_ID = "template_bf7s0k4"
-EMAILJS_PUBLIC_KEY = "4Rhjzk_gR3p1Vst5g"
+EMAILJS_PUBLIC_KEY = "YJXT3JC_0tD2AjeQp"
 # Link used in welcome emails.
 SITE_URL = "https://scsm-calendar.web.app"
 
