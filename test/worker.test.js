@@ -188,7 +188,7 @@ describe("sessions", () => {
   test("no token, a made-up token, or a malformed header → 401", async () => {
     assert.equal((await call("GET", "/api/bootstrap")).status, 401);
     assert.equal((await call("GET", "/api/bootstrap", { token: "x".repeat(43) })).status, 401);
-    assert.equal((await call("GET", "/api/events", { token: "<script>" })).status, 401);
+    assert.equal((await call("GET", "/api/my-agenda", { token: "<script>" })).status, 401);
   });
 
   test("“Sign out of this device” ends only that device", async () => {
@@ -247,36 +247,36 @@ describe("personal events are private", () => {
   test("user A can't read, change or delete user B's events", async () => {
     const a = await signIn(A);
     const b = await signIn(B);
-    const created = await call("POST", "/api/events", { token: a, body: event({ title: "A's private thing" }) });
+    const created = await call("POST", "/api/my-agenda", { token: a, body: event({ title: "A's private thing" }) });
     assert.equal(created.status, 201);
     const id = created.data.event.id;
 
-    const bList = await call("GET", "/api/events", { token: b });
+    const bList = await call("GET", "/api/my-agenda", { token: b });
     assert.deepEqual(bList.data.events, []);
     assert.ok(!bList.text.includes("private thing"));
 
-    assert.equal((await call("PUT", `/api/events/${id}`, { token: b, body: event({ title: "hacked" }) })).status, 404);
-    assert.equal((await call("DELETE", `/api/events/${id}`, { token: b })).status, 404);
+    assert.equal((await call("PUT", `/api/my-agenda/${id}`, { token: b, body: event({ title: "hacked" }) })).status, 404);
+    assert.equal((await call("DELETE", `/api/my-agenda/${id}`, { token: b })).status, 404);
 
-    const aList = await call("GET", "/api/events", { token: a });
+    const aList = await call("GET", "/api/my-agenda", { token: a });
     assert.equal(aList.data.events.length, 1);
     assert.equal(aList.data.events[0].title, "A's private thing");
   });
 
   test("the owner can create, edit and delete; weekly repeats need an end date", async () => {
     const a = await signIn(A);
-    const { data } = await call("POST", "/api/events", { token: a, body: event() });
+    const { data } = await call("POST", "/api/my-agenda", { token: a, body: event() });
     const id = data.event.id;
-    const upd = await call("PUT", `/api/events/${id}`, { token: a, body: event({ title: "Dentist (moved)", repeatWeekly: true, repeatUntil: "2026-12-01", location: "Main St" }) });
+    const upd = await call("PUT", `/api/my-agenda/${id}`, { token: a, body: event({ title: "Dentist (moved)", repeatWeekly: true, repeatUntil: "2026-12-01", location: "Main St" }) });
     assert.equal(upd.status, 200);
     assert.equal(upd.data.event.repeatWeekly, true);
     assert.equal(upd.data.event.location, "Main St");
-    assert.equal((await call("PUT", `/api/events/${id}`, { token: a, body: event({ repeatWeekly: true }) })).status, 400);
-    const allDay = await call("POST", "/api/events", { token: a, body: { title: "Conference", date: "2026-10-05", allDay: true, color: "#983BAE" } });
+    assert.equal((await call("PUT", `/api/my-agenda/${id}`, { token: a, body: event({ repeatWeekly: true }) })).status, 400);
+    const allDay = await call("POST", "/api/my-agenda", { token: a, body: { title: "Conference", date: "2026-10-05", allDay: true, color: "#983BAE" } });
     assert.equal(allDay.status, 201);
     assert.equal(allDay.data.event.startTime, null);
-    assert.equal((await call("DELETE", `/api/events/${id}`, { token: a })).status, 200);
-    assert.equal((await call("DELETE", `/api/events/${id}`, { token: a })).status, 404);
+    assert.equal((await call("DELETE", `/api/my-agenda/${id}`, { token: a })).status, 200);
+    assert.equal((await call("DELETE", `/api/my-agenda/${id}`, { token: a })).status, 404);
   });
 
   test("inputs are validated and limited", async () => {
@@ -292,14 +292,14 @@ describe("personal events are private", () => {
       event({ repeatWeekly: true, repeatUntil: "2026-09-01" }),
       event({ repeatWeekly: true, repeatUntil: "2030-01-01" }),
     ];
-    for (const body of bad) assert.equal((await call("POST", "/api/events", { token: a, body })).status, 400, JSON.stringify(body));
-    const r = await call("POST", "/api/events", { token: a, body: "[1,2]" });
+    for (const body of bad) assert.equal((await call("POST", "/api/my-agenda", { token: a, body })).status, 400, JSON.stringify(body));
+    const r = await call("POST", "/api/my-agenda", { token: a, body: "[1,2]" });
     assert.equal(r.status, 400);
   });
 
   test("HTML in titles is stored as plain text (the website shows it with textContent)", async () => {
     const a = await signIn(A);
-    const r = await call("POST", "/api/events", { token: a, body: event({ title: "<img src=x onerror=alert(1)>" }) });
+    const r = await call("POST", "/api/my-agenda", { token: a, body: event({ title: "<img src=x onerror=alert(1)>" }) });
     assert.equal(r.status, 201);
     assert.equal(r.data.event.title, "<img src=x onerror=alert(1)>");
     assert.equal(r.headers.get("content-type"), "application/json; charset=utf-8");

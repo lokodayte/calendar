@@ -39,8 +39,10 @@ async function request(path, { method = "GET", body } = {}) {
   let res;
   try {
     res = await fetch(BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-  } catch {
-    throw new ApiError(0, "Couldn't reach the calendar service. Check your internet connection and try again.");
+  } catch (err) {
+    // Shows up in the browser console (Cmd+Option+J) to tell a blocked request from an outage.
+    console.error(`Request to ${BASE + path} failed. If this is only in one browser, an ad blocker or privacy extension may be blocking it.`, err);
+    throw new ApiError(0, "Couldn't reach the calendar service. If you use an ad blocker, allow this site and try again.");
   }
   if (res.status === 401 && !path.startsWith("/api/auth/")) {
     let msg = "Your sign-in has expired. Please sign in again.";

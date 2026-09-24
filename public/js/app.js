@@ -168,7 +168,7 @@ function renderNotices() {
 }
 
 async function loadMyEvents() {
-  S.events = (await api("/api/events")).events;
+  S.events = (await api("/api/my-agenda")).events;
 }
 
 /* =====================================================================
@@ -365,7 +365,7 @@ function openEvent(ev) {
       const repeat = p.personal.repeatWeekly ? " This deletes every week of it." : "";
       if (!(await confirmDialog("Delete this event?", `“${p.personal.title}” will be removed.${repeat}`, "Delete"))) return;
       try {
-        await api(`/api/events/${p.personal.id}`, { method: "DELETE" });
+        await api(`/api/my-agenda/${p.personal.id}`, { method: "DELETE" });
         S.events = S.events.filter((x) => x.id !== p.personal.id);
         $("#dlgEvent").close();
         refreshSources();
@@ -436,8 +436,8 @@ $("#formEvent").addEventListener("submit", async (e) => {
   await busy($("#feSave"), "Saving…", async () => {
     try {
       const r = editing
-        ? await api(`/api/events/${editing.id}`, { method: "PUT", body })
-        : await api("/api/events", { method: "POST", body });
+        ? await api(`/api/my-agenda/${editing.id}`, { method: "PUT", body })
+        : await api("/api/my-agenda", { method: "POST", body });
       S.events = S.events.filter((x) => x.id !== r.event.id).concat(r.event);
       if (!isOn("mine")) toggle("mine");
       $("#dlgEdit").close();
@@ -563,7 +563,12 @@ async function reload() {
   S.coverage = data.coverage;
   S.feeds.clear();
   feedState.clear();
-  await loadMyEvents();
+  try { await loadMyEvents(); }
+  catch (err) {
+    if (err.status === 401) throw err;
+    S.events = [];
+    toast(`Couldn't load your own events right now (${err.message}). Shared calendars still work.`);
+  }
   document.title = S.site.title;
   $("#siteTitle").textContent = S.site.title;
   $("#tabAdmin").hidden = !S.me.isAdmin;

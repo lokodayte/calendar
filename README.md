@@ -336,7 +336,7 @@ Rough numbers, assuming each person opens the site about 3 times a workday. Chec
 - **Changing the database:** add a new numbered file such as `worker/migrations/0002_something.sql`. The deploy applies it automatically.
 - **Main routes:**
   - Sign-in: `POST /api/auth/request`, `POST /api/auth/verify`, `POST /api/auth/signout`.
-  - Signed-in person: `GET /api/bootstrap`, `PUT /api/prefs`, `GET /api/feeds/shared/:id`, `GET /api/feeds/mine/:id`, `/api/events[/:id]`, `/api/my-feeds[/:id]`.
+  - Signed-in person: `GET /api/bootstrap`, `PUT /api/prefs`, `GET /api/feeds/shared/:id`, `GET /api/feeds/mine/:id`, `/api/my-agenda[/:id]` (personal events), `/api/my-feeds[/:id]`.
   - Admin: `/api/admin/*`.
   - Access rules are listed in one table in `worker/src/index.js`.
 - **Times:** office hours, personal events and closed dates are wall-clock times in **America/New_York**. The calendar grid shows times in the viewer's own time zone.
