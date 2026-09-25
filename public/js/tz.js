@@ -63,25 +63,3 @@ export function parseHm(s) {
   const v = +m[1] * 60 + +m[2];
   return +m[1] <= 24 && +m[2] < 60 && v <= 1440 ? v : null;
 }
-
-export function hm(minutes) {
-  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-}
-
-/** "9:00", "1:30" plus meridiem, e.g. {t:"1:30", ap:"pm"} */
-export function clock(minutes) {
-  const h24 = Math.floor(minutes / 60) % 24, mi = minutes % 60;
-  const h = h24 % 12 === 0 ? 12 : h24 % 12;
-  return { t: `${h}:${String(mi).padStart(2, "0")}`, ap: h24 < 12 ? "am" : "pm" };
-}
-
-/** "9:00–10:30 am", "11:30 am–1:00 pm" */
-export function rangeLabel(startMin, endMin) {
-  const a = clock(startMin), b = clock(endMin);
-  return a.ap === b.ap ? `${a.t}–${b.t} ${b.ap}` : `${a.t} ${a.ap}–${b.t} ${b.ap}`;
-}
-
-export function timeLabel(minutes) { const c = clock(minutes); return `${c.t} ${c.ap}`; }
-
-export const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-export const WEEKDAY_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];

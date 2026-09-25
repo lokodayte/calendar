@@ -3,11 +3,10 @@
 
 DELETE FROM calendars;
 DELETE FROM feed_cache;
-INSERT INTO calendars (name, color, url, source, owner, default_on, is_shift, audience, sort_order, created_at, updated_at) VALUES
-  ('Club & School Events',  '#E0475B', 'sample:clubs',  'other',   'Parijat Das',  1, 0, 'public',   1, 0, 0),
-  ('School Events',         '#5B4FB3', 'sample:school', 'outlook', 'Dean''s office', 1, 0, 'public',   2, 0, 0),
-  ('Student Work Schedule', '#D98A0B', 'sample:work',   'outlook', 'SCSM office',  1, 1, 'everyone', 3, 0, 0),
-  ('Social Media',          '#1E8E62', 'sample:social', 'outlook', '',             0, 0, 'staff',    4, 0, 0);
+INSERT INTO calendars (name, color, url, source, owner, default_on, audience, sort_order, created_at, updated_at) VALUES
+  ('Club & School Events',  '#E0475B', 'sample:clubs',  'other',   'Parijat Das',    1, 'public', 1, 0, 0),
+  ('School Events',         '#5B4FB3', 'sample:school', 'outlook', 'Dean''s office', 1, 'public', 2, 0, 0),
+  ('Social Media',          '#1E8E62', 'sample:social', 'outlook', '',               0, 'staff',  3, 0, 0);
 
 DELETE FROM staff WHERE added_by = 'seed';
 INSERT INTO staff (email, name, role, access_until, added_at, added_by) VALUES

@@ -1,5 +1,3 @@
-import { normalizeCoverage } from "../../public/js/coverage.js";
-
 export const LIMITS = {
   CACHE_MINUTES: 20,          // how often calendar links are re-read
   RETRY_AFTER_ERROR_MIN: 5,   // after a failed fetch, serve the saved copy this long before retrying
@@ -23,11 +21,10 @@ const DEFAULTS = {
 
 export async function getSettings(env) {
   const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
-  const out = { ...DEFAULTS, coverage: null };
+  const out = { ...DEFAULTS };
   for (const r of results) {
     try { out[r.key] = JSON.parse(r.value); } catch { /* ignore a broken row */ }
   }
-  out.coverage = normalizeCoverage(out.coverage);
   return out;
 }
 

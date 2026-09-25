@@ -1,12 +1,12 @@
 # SCSM Calendar
 
-A private calendar website for SCSM staff and faculty. It shows several shared calendars in one place (Student Work Schedule, School Events, Club Events, Social Media and more). Each person can also add private events of their own. The **Coverage** tab shows who is at the front desk, and when nobody is.
+A calendar website for the School of Computer Science & Mathematics. Anyone can see the public front page of upcoming School and club events. SCSM staff and student assistants sign in to see every shared calendar in one place (SchoolCSM Events, Club Events, Social Media and more) and to add private events of their own.
 
 - **Staff only.** People sign in with a 6-digit code sent to their work email. There are no passwords.
 - **Remembers each device** for a year. People can sign out of a device at any time, and the admin can sign anyone out.
 - **Everyone chooses what they see.** Each calendar has an on/off switch, and the choices follow the person to any device.
 - **Private events.** Events you add are visible only to you.
-- **Desk coverage.** Shows who's on shift now, who's next, a week grid of covered and uncovered times, and a list of gaps you can copy.
+- **Public front page.** Calendars an admin marks "Public" show on the front page for anyone, with a "Coming up" list.
 - **Free.** Everything runs on free plans: Cloudflare, Firebase, EmailJS and GitHub.
 
 ```
@@ -83,7 +83,7 @@ This runs the whole app on your computer with sample calendars. No accounts are 
    Subject: 123456 is your SCSM Calendar code
    ```
 
-The sample Student Work Schedule is already marked as a shift calendar, so the Coverage tab has data for this week. To start over with fresh sample data, run `npm run dev:setup` again.
+Two sample calendars are marked Public, so the front page has events. To start over with fresh sample data, run `npm run dev:setup` again.
 
 ---
 
@@ -205,9 +205,8 @@ Each commit starts a deploy. Early ones may fail until everything is filled in, 
 1. Open your website, `https://<project-id>.web.app`.
 2. Sign in with **boris.sargsyan1@marist.edu**, then enter the code from the email. Check junk too.
 3. Open the **Admin** tab:
-   1. **Shared calendars → + Add shared calendar.** Add each calendar with its ICS link (see the next section) and click **Test link**. For the **Student Work Schedule**, tick **Shift calendar**, then check that the name preview shows the workers' names correctly.
-   2. **Desk coverage:** check the office hours (Mon–Fri, 9–5 by default) and add holidays and breaks.
-   3. **People:** paste everyone's emails and choose their role. Welcome emails use your 200-a-month allowance, so it's usually better to send people the link yourself.
+   1. **Shared calendars → + Add shared calendar.** Add each calendar with its ICS link (see the next section), click **Test link**, and choose **Who can see it**.
+   2. **People:** paste everyone's emails and choose their role. Welcome emails use your 200-a-month allowance, so it's usually better to send people the link yourself.
 
 You're live. 🎉
 
@@ -244,7 +243,7 @@ Everything is done in the **Admin** tab. Every change is recorded under **Recent
 |---|---|---|
 | **Super admin** | Set in `wrangler.toml` (`SUPERADMIN_EMAILS`) | Everything. Can't be removed, demoted or signed out by anyone from the website. |
 | **Admin** | Made in **Admin → People** | Everything a super admin can, including making other admins, but can't change super admins. |
-| **Staff** | Added in **Admin → People** | See all calendars, coverage, add private events. |
+| **Staff** | Added in **Admin → People** | See all calendars and add private events. |
 | **Student assistant** | Added in **Admin → People** | Same as staff, but can't see calendars marked "Staff only". Can have an **access until** date (e.g. end of semester). |
 | **Anyone else** | — | Sees the public front page only. If they try to sign in they're told right away that it's for SCSM staff, and no email is sent. |
 
@@ -262,8 +261,6 @@ Everything is done in the **Admin** tab. Every change is recorded under **Recent
 | Show a calendar on the public front page | Edit it and set **Who can see it** to **Public**. |
 | Hide a calendar from student assistants | Set **Who can see it** to **Staff only**. |
 | Change the order in the sidebar | Use the ▲ ▼ arrows. |
-| Add a holiday or break | **Desk coverage → + Add closed dates**, then **Save**. |
-| Email the gap list | **Coverage** tab, then **Copy list**, then paste it into Outlook. |
 | Change the site title or front-page text | **Settings**. |
 | Add another super admin | Edit `SUPERADMIN_EMAILS` in `wrangler.toml` on GitHub. It's live after the automatic deploy. |
 
@@ -280,8 +277,7 @@ Everything is done in the **Admin** tab. Every change is recorded under **Recent
 2. Use the switches on the left to show or hide calendars. On a phone, tap ☰. Your choices are saved for all your devices.
 3. **+ Add event** creates a private event that only you can see.
 4. **+ Add my Outlook or Google calendar** shows your own calendar here as well. It's private to you.
-5. Click any event to see where it comes from (for example, "From Outlook — Student Work Schedule").
-6. The **Coverage** tab shows who's at the front desk now, who's next, and this week's gaps.
+5. Click any event to see where it comes from (for example, "From Outlook — SchoolCSM Events").
 
 ---
 
@@ -299,7 +295,7 @@ Rough numbers, assuming each person opens the site about 3 times a workday. Chec
 | Firebase Hosting | 10 GB stored, 360 MB/day transfer | ~20–50 MB/day | FullCalendar and ical.js load from the jsDelivr CDN, which doesn't count. |
 | GitHub Actions | 2,000 min/month (private repo) | ~2 min per push | Public repos are unlimited. |
 
-**Built to stay small:** feeds are cached for 20 minutes on the server and 5 minutes in the browser. Coverage is calculated in the browser. Toggle changes are saved once, after you stop clicking. Admin changes are grouped into one database write where possible.
+**Built to stay small:** feeds are cached for 20 minutes on the server and 5 minutes in the browser. Toggle changes are saved once, after you stop clicking. Admin changes are grouped into one database write where possible.
 
 ---
 
@@ -335,20 +331,19 @@ Rough numbers, assuming each person opens the site about 3 times a workday. Chec
 | No code email arrives | Check junk. Open **Admin → Settings**: a yellow warning there shows the exact problem. In EmailJS, the **Email History** page shows each send. The usual causes are: the monthly limit is reached, "Allow EmailJS API for non-browser applications" is off, or the template's **To Email** isn't `{{to_email}}`. |
 | *"Couldn't load Club Events right now. Showing the last saved copy."* | The Outlook or Google link is down or was unpublished. In **Admin → Shared calendars → Edit → Test link**, check the error. |
 | A GitHub Actions run is red | Click it, then open the red step. The first lines say what's missing. |
-| Coverage says "No shift calendar yet" | Edit the Student Work Schedule and tick **Shift calendar**. |
 
 ---
 
 ## For developers
 
 - **Run the tests:** `npm test`. This covers:
-  - **Coverage and ICS** (`test/coverage.test.js`): overlapping and odd-time shifts, closed dates, cancelled and moved occurrences, and the switch back from daylight saving time.
+  - **Reading calendars** (`test/ics.test.js`): repeating events, cancelled and moved occurrences, Outlook's time zone names, and the switch back from daylight saving time.
   - **The Worker** (`test/worker.test.js`): sign-in, sessions, keeping each person's data private, admin-only access, feed caching and CORS. These tests run against real SQLite (Node's `node:sqlite`) through a small D1 stand-in.
-- **Shared code:** `public/js/tz.js`, `ics.js` and `coverage.js` are plain ES modules. The browser, the Worker (bundled by wrangler) and the tests all use the same files.
+- **Shared code:** `public/js/tz.js` and `ics.js` are plain ES modules. The browser, the Worker (bundled by wrangler) and the tests all use the same files.
 - **Changing the database:** add a new numbered file such as `worker/migrations/0002_something.sql`. The deploy applies it automatically.
 - **Main routes:**
   - Sign-in: `POST /api/auth/request`, `POST /api/auth/verify`, `POST /api/auth/signout`.
   - Signed-in person: `GET /api/bootstrap`, `PUT /api/prefs`, `GET /api/feeds/shared/:id`, `GET /api/feeds/mine/:id`, `/api/my-agenda[/:id]` (personal events), `/api/my-feeds[/:id]`.
   - Admin: `/api/admin/*`.
   - Access rules are listed in one table in `worker/src/index.js`.
-- **Times:** office hours, personal events and closed dates are wall-clock times in **America/New_York**. The calendar grid shows times in the viewer's own time zone.
+- **Times:** personal events and "access until" dates are in **America/New_York**. The calendar grid shows times in the viewer's own time zone.

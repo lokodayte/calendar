@@ -15,7 +15,7 @@ function hostOf(url) {
 
 const sharedPublic = (c) => ({
   id: c.id, name: c.name, color: c.color, source: c.source, owner: c.owner,
-  defaultOn: !!c.default_on, isShift: !!c.is_shift, audience: c.audience,
+  defaultOn: !!c.default_on, audience: c.audience,
 });
 const inList = (xs) => xs.map(() => "?").join(", ");
 const feedPublic = (f) => ({ id: f.id, name: f.name, color: f.color, source: f.source, host: hostOf(f.url) });
@@ -24,7 +24,7 @@ const feedPublic = (f) => ({ id: f.id, name: f.name, color: f.color, source: f.s
 export async function bootstrap(req, env, ctx, user) {
   const aud = visibleAudiences(user);
   const [cals, feeds, prefs] = await env.DB.batch([
-    env.DB.prepare(`SELECT id, name, color, source, owner, default_on, is_shift, audience FROM calendars
+    env.DB.prepare(`SELECT id, name, color, source, owner, default_on, audience FROM calendars
       WHERE audience IN (${inList(aud)}) ORDER BY sort_order, id`).bind(...aud),
     env.DB.prepare("SELECT id, name, color, url, source FROM personal_feeds WHERE email = ? ORDER BY id").bind(user.email),
     env.DB.prepare("SELECT visible FROM user_prefs WHERE email = ?").bind(user.email),
@@ -38,7 +38,6 @@ export async function bootstrap(req, env, ctx, user) {
     calendars: cals.results.map(sharedPublic),
     myFeeds: feeds.results.map(feedPublic),
     visible,
-    coverage: settings.coverage,
   });
 }
 

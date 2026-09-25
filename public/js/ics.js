@@ -110,13 +110,3 @@ export function expandIcs(parsed, fromMs, toMs, limit = 20000) {
   }
   return out;
 }
-
-/** Unique event titles (for the admin's shift-name preview). */
-export function sampleTitles(parsed, max = 40) {
-  const seen = new Set();
-  for (const ev of parsed.events) {
-    if (ev.summary) seen.add(ev.summary.trim());
-    if (seen.size >= max) break;
-  }
-  return [...seen];
-}

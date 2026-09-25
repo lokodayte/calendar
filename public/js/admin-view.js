@@ -1,10 +1,8 @@
-// Admin tab: staff list and devices, shared calendars, desk coverage settings, site settings, activity log.
+// Admin tab: people and devices, shared calendars, site settings, activity log.
 // Visible only to admins; the Worker enforces this independently on every admin request.
 
 import { api } from "./api.js";
 import { h, toast, confirmDialog, busy, colorPicker, sourceIcon, SOURCES, fmtStamp } from "./dom.js";
-import { extractName, DEFAULT_COVERAGE } from "./coverage.js";
-import { WEEKDAY_LONG } from "./tz.js";
 
 function detectSource(url) {
   const u = String(url || "").toLowerCase();
@@ -36,19 +34,17 @@ export function initAdmin(root, ctx) {
 
   const staffPanel = h("section", { class: "card panel", id: "admin-staff" });
   const calPanel = h("section", { class: "card panel", id: "admin-calendars" });
-  const covPanel = h("section", { class: "card panel", id: "admin-coverage" });
   const setPanel = h("section", { class: "card panel", id: "admin-settings" });
   const logPanel = h("section", { class: "card panel", id: "admin-log" });
   const jump = (id) => (e) => { e.preventDefault(); document.getElementById(id).scrollIntoView({ behavior: "smooth" }); };
   root.append(
-    h("div", { class: "admin-head" }, h("h1", { text: "Admin" }), h("p", { text: "Manage who can sign in, the shared calendars, desk coverage and site settings." })),
+    h("div", { class: "admin-head" }, h("h1", { text: "Admin" }), h("p", { text: "Manage who can sign in, the shared calendars and site settings." })),
     h("nav", { class: "admin-nav", "aria-label": "Admin sections" },
       h("a", { href: "#admin", text: "People", onclick: jump("admin-staff") }),
       h("a", { href: "#admin", text: "Shared calendars", onclick: jump("admin-calendars") }),
-      h("a", { href: "#admin", text: "Desk coverage", onclick: jump("admin-coverage") }),
       h("a", { href: "#admin", text: "Settings", onclick: jump("admin-settings") }),
       h("a", { href: "#admin", text: "Recent activity", onclick: jump("admin-log") })),
-    staffPanel, calPanel, covPanel, setPanel, logPanel);
+    staffPanel, calPanel, setPanel, logPanel);
 
   async function loadAll() {
     const [st, cal, set, log] = await Promise.all([
@@ -234,7 +230,6 @@ export function initAdmin(root, ctx) {
           h("div", { class: "meta" },
             h("span", { class: "pill", style: { display: "inline-flex", gap: "5px", "align-items": "center" } }, h("span", { style: { display: "inline-flex", width: "13px" } }, sourceIcon(c.source)), SOURCES[c.source].label),
             h("span", { class: `pill ${c.audience === "public" ? "role-admin" : c.audience === "staff" ? "role-staff" : ""}`, text: { public: "Public", everyone: "Everyone signed in", staff: "Staff only" }[c.audience || "everyone"] }),
-            c.isShift ? h("span", { class: "pill", text: "Shift calendar" }) : null,
             c.defaultOn ? null : h("span", { class: "pill", text: "Off by default" }),
             c.owner ? h("span", { class: "muted small", text: `Contact: ${c.owner}` }) : null)),
         h("button", { class: "btn small", type: "button", text: "Edit", onclick: () => editCalendar(c) })));
@@ -259,7 +254,7 @@ export function initAdmin(root, ctx) {
   }
 
   function editCalendar(cal) {
-    const c = cal || { name: "", color: "#E0475B", url: "", source: "", owner: "", defaultOn: true, isShift: false, audience: "everyone" };
+    const c = cal || { name: "", color: "#E0475B", url: "", source: "", owner: "", defaultOn: true, audience: "everyone" };
     let sourceTouched = !!cal;
     const name = h("input", { maxlength: 80, value: c.name, required: true });
     const url = h("input", { maxlength: 2000, value: c.url, placeholder: "https://outlook.office365.com/owa/calendar/…/calendar.ics", spellcheck: "false", autocomplete: "off" });
@@ -274,7 +269,6 @@ export function initAdmin(root, ctx) {
     const audience = h("select", {},
       [["public", "Public — anyone, on the front page (no sign-in)"], ["everyone", "Everyone signed in (staff and student assistants)"], ["staff", "Staff only (hidden from student assistants)"]]
         .map(([v0, t]) => h("option", { value: v0, text: t, selected: (c.audience || "everyone") === v0 })));
-    const isShift = h("input", { type: "checkbox", checked: c.isShift });
     const testOut = h("div", { class: "test-result", hidden: true });
     const err = h("p", { class: "err", hidden: true });
     const testBtn = h("button", { class: "btn", type: "button", text: "Test link" });
@@ -291,13 +285,9 @@ export function initAdmin(root, ctx) {
         testOut.replaceChildren(h("b", { text: `It works: found ${r.events} event${r.events === 1 ? "" : "s"}.` }));
         if (!sourceTouched) source.value = r.source;
         if (r.titles.length) {
-          const prefixes = D.settings.coverage.prefixes;
           testOut.append(
-            h("p", { class: "muted small", style: { margin: "8px 0 0" }, text: isShift.checked || c.isShift
-              ? "Worker names we'll read from the event titles. If a name looks wrong, adjust “Words to ignore” in Desk coverage."
-              : "Some event titles from this calendar:" }),
-            h("table", {}, h("tbody", {}, r.titles.slice(0, 15).map((t) => h("tr", {},
-              h("td", { text: t }), isShift.checked || c.isShift ? h("td", { text: `→ ${extractName(t, prefixes)}` }) : null)))));
+            h("p", { class: "muted small", style: { margin: "8px 0 0" }, text: "Some event titles from this calendar:" }),
+            h("table", {}, h("tbody", {}, r.titles.slice(0, 15).map((t) => h("tr", {}, h("td", { text: t }))))));
         }
       } catch (e2) { testOut.className = "test-result bad"; testOut.textContent = e2.message; }
     });
@@ -315,13 +305,12 @@ export function initAdmin(root, ctx) {
         field("Owner or contact (optional)", owner),
         h("div", {}, h("span", { class: "label", text: "Color" }), colors),
         h("label", { class: "check" }, defaultOn, h("span", { text: "On by default for staff (each person can still turn it off)" })),
-        h("label", { class: "check" }, isShift, h("span", { text: "Shift calendar — each event is a person's desk shift (used by Coverage)" })),
         err),
       [del, h("span", { class: "grow" }), h("button", { class: "btn", type: "button", text: "Cancel", onclick: () => d.close() }), save].filter(Boolean));
 
     save.onclick = () => busy(save, "Saving…", async () => {
       err.hidden = true;
-      const body = { name: name.value.trim(), color: picked.value, url: url.value.trim(), source: source.value, owner: owner.value.trim(), defaultOn: defaultOn.checked, isShift: isShift.checked, audience: audience.value };
+      const body = { name: name.value.trim(), color: picked.value, url: url.value.trim(), source: source.value, owner: owner.value.trim(), defaultOn: defaultOn.checked, audience: audience.value };
       if (!body.name) { err.textContent = "Give the calendar a name."; err.hidden = false; return; }
       if (!body.url) { err.textContent = "Paste the calendar's ICS link."; err.hidden = false; return; }
       try {
@@ -350,94 +339,6 @@ export function initAdmin(root, ctx) {
       };
     }
     name.focus();
-  }
-
-  /* ================= Desk coverage settings ================= */
-
-  function renderCoverage() {
-    const cov = D.settings.coverage;
-    const order = [1, 2, 3, 4, 5, 6, 0];
-    const hourInputs = {};
-    const hours = h("div", { class: "hours" },
-      h("span", { class: "label", text: "Day" }), h("span", { class: "label", text: "Opens" }), h("span", { class: "label", text: "Closes" }));
-    for (const wd of order) {
-      const cur = cov.hours[wd];
-      const open = h("input", { type: "checkbox", checked: !!cur });
-      const from = h("input", { type: "time", value: cur ? cur[0] : "09:00", step: 900, disabled: !cur, "aria-label": `${WEEKDAY_LONG[wd]} opens` });
-      const to = h("input", { type: "time", value: cur ? cur[1] : "17:00", step: 900, disabled: !cur, "aria-label": `${WEEKDAY_LONG[wd]} closes` });
-      open.addEventListener("change", () => { from.disabled = to.disabled = !open.checked; });
-      hourInputs[wd] = { open, from, to };
-      hours.append(h("label", { class: "check" }, open, h("span", { text: WEEKDAY_LONG[wd] })), from, to);
-    }
-    const minStaff = h("input", { type: "number", min: 1, max: 20, value: cov.minStaff, style: { width: "90px" } });
-    const slot = h("select", { style: { width: "140px" } },
-      h("option", { value: "30", text: "30 minutes", selected: cov.slotMinutes === 30 }),
-      h("option", { value: "15", text: "15 minutes", selected: cov.slotMinutes === 15 }));
-
-    const closedBox = h("div", { class: "closed-rows" });
-    const addClosed = (c = { from: "", to: "", label: "" }) => {
-      const from = h("input", { type: "date", value: c.from, "aria-label": "First closed day" });
-      const to = h("input", { type: "date", value: c.to === c.from ? "" : c.to, "aria-label": "Last closed day (optional)" });
-      const label = h("input", { value: c.label, maxlength: 80, placeholder: "e.g. Thanksgiving", "aria-label": "Reason" });
-      const row = h("div", { class: "closed-row" }, from, to, label,
-        h("button", { class: "btn small", type: "button", text: "Remove", onclick: () => row.remove() }));
-      row._get = () => ({ from: from.value, to: to.value || from.value, label: label.value.trim() });
-      closedBox.append(row);
-    };
-    for (const c of cov.closed) addClosed(c);
-
-    const prefixes = h("input", { value: cov.prefixes.join(", "), maxlength: 600 });
-    const tryTitle = h("input", { placeholder: "Try an event title, e.g. Front desk: Elina", maxlength: 200 });
-    const tryOut = h("p", { class: "muted small" });
-    const updateTry = () => {
-      const list = prefixes.value.split(",").map((s) => s.trim()).filter(Boolean);
-      tryOut.textContent = tryTitle.value.trim() ? `Worker name: ${extractName(tryTitle.value, list)}` : "";
-    };
-    prefixes.addEventListener("input", updateTry);
-    tryTitle.addEventListener("input", updateTry);
-
-    const err = h("p", { class: "err", hidden: true });
-    const save = h("button", { class: "btn primary", type: "button", text: "Save coverage settings" });
-    save.onclick = () => busy(save, "Saving…", async () => {
-      err.hidden = true;
-      const hoursOut = {};
-      for (const wd of order) {
-        const x = hourInputs[wd];
-        if (!x.open.checked) continue;
-        if (!x.from.value || !x.to.value || x.to.value <= x.from.value) { err.textContent = `${WEEKDAY_LONG[wd]}: closing time must be after opening time.`; err.hidden = false; return; }
-        hoursOut[wd] = [x.from.value, x.to.value];
-      }
-      const closed = [...closedBox.children].map((r) => r._get()).filter((c) => c.from);
-      if (closed.some((c) => c.to < c.from)) { err.textContent = "A closed-dates range ends before it starts."; err.hidden = false; return; }
-      const coverage = {
-        hours: hoursOut, minStaff: +minStaff.value || 1, slotMinutes: +slot.value, closed,
-        prefixes: prefixes.value.split(",").map((s) => s.trim()).filter(Boolean),
-      };
-      try {
-        D.settings = await api("/api/admin/settings", { method: "PUT", body: { coverage } });
-        renderCoverage();
-        toast("Coverage settings saved.");
-        ctx.reload();
-        refreshLog();
-      } catch (e2) { err.textContent = e2.message; err.hidden = false; }
-    });
-
-    covPanel.replaceChildren(
-      h("h2", { text: "Desk coverage" }),
-      h("p", { class: "muted sub", text: "Used by the Coverage tab. Mark the student work schedule as a “Shift calendar” under Shared calendars." }),
-      h("h3", { text: "Office hours", style: { margin: "4px 0 0", "font-size": "16px" } }), hours,
-      h("div", { class: "inline-row" },
-        h("div", {}, h("label", { text: "People needed at the desk" }), minStaff),
-        h("div", {}, h("label", { text: "Grid block size" }), slot)),
-      h("h3", { text: "Closed dates (holidays and breaks)", style: { margin: "8px 0 0", "font-size": "16px" } }),
-      h("p", { class: "muted small", text: "These days never count as gaps. Leave “to” empty for a single day." }),
-      closedBox,
-      h("div", {}, h("button", { class: "btn small", type: "button", text: "+ Add closed dates", onclick: () => addClosed() })),
-      h("h3", { text: "Reading worker names", style: { margin: "8px 0 0", "font-size": "16px" } }),
-      field("Words to ignore in shift titles (comma-separated)", prefixes, `Default: ${DEFAULT_COVERAGE.prefixes.join(", ")}. “Front desk: Elina” becomes “Elina”.`),
-      tryTitle, tryOut,
-      err,
-      h("div", {}, save));
   }
 
   /* ================= Site settings ================= */
@@ -491,7 +392,7 @@ export function initAdmin(root, ctx) {
       try {
         await loadAll();
         root.querySelector(".admin-loading")?.remove();
-        renderStaff(); renderCalendars(); renderCoverage(); renderSettings(); renderLog();
+        renderStaff(); renderCalendars(); renderSettings(); renderLog();
       } catch (err) {
         root.querySelector(".admin-loading")?.remove();
         toast(err.message);

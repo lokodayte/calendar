@@ -45,7 +45,7 @@
 
     <footer class="pub-foot">
       <p>School of Computer Science &amp; Mathematics · Marist University</p>
-      <p>SCSM staff and student assistants: <button class="link" type="button" id="btnStaffSignIn2">sign in</button> for the full calendar and desk coverage.</p>
+      <p>SCSM staff and student assistants: <button class="link" type="button" id="btnStaffSignIn2">sign in</button> for the full calendar.</p>
     </footer>
   </div>
 
@@ -58,7 +58,6 @@
       <div class="brand"><span class="mark" aria-hidden="true"></span><span class="brand-name" id="siteTitle">SCSM Calendar</span></div>
       <nav class="tabs" role="tablist" aria-label="Views">
         <button role="tab" type="button" data-tab="calendar" aria-selected="true">Calendar</button>
-        <button role="tab" type="button" data-tab="coverage" aria-selected="false">Coverage</button>
         <button role="tab" type="button" data-tab="admin" aria-selected="false" hidden id="tabAdmin">Admin</button>
       </nav>
       <div class="menu-wrap">
@@ -105,11 +104,6 @@
         <div id="notices" class="notices" aria-live="polite"></div>
         <div class="card cal-card"><div id="calendar"></div></div>
       </div>
-    </section>
-
-    <!-- Coverage -->
-    <section class="view view-coverage" data-view="coverage" hidden>
-      <div id="coverageRoot" class="coverage"></div>
     </section>
 
     <!-- Admin -->

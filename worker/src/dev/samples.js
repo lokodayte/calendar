@@ -1,5 +1,5 @@
-// Sample calendars for local dev mode, generated around the current week so the
-// Coverage view always has something to show. Used only when DEV_MODE = "true".
+// Sample calendars for local dev mode, generated around the current week so there's
+// always something to see. Used only when DEV_MODE = "true".
 
 import { TZ, ymd, mondayOf, addDays } from "../../../public/js/tz.js";
 
@@ -42,37 +42,6 @@ export function sampleIcs(name, now = Date.now()) {
   const mon = mondayOf(ymd(now));
   const d = (weekOffset, weekday) => addDays(mon, weekOffset * 7 + weekday); // weekday 0 = Monday
   const ev = [];
-
-  if (name === "work") {
-    for (const w of [-1, 0, 1]) {
-      // Monday: Elina 9–11, Sam 11–1, gap 1–2, Elina 2–4, gap 4–5
-      ev.push(vevent({ uid: `w${w}-mon-1`, date: d(w, 0), from: "09:00", to: "11:00", title: "Front desk: Elina", location: "SCSM office" }));
-      ev.push(vevent({ uid: `w${w}-mon-2`, date: d(w, 0), from: "11:00", to: "13:00", title: "Front desk: Sam", location: "SCSM office" }));
-      ev.push(vevent({ uid: `w${w}-mon-3`, date: d(w, 0), from: "14:00", to: "16:00", title: "Front desk: Elina", location: "SCSM office" }));
-      // Tuesday: Ana 9–12:30, Sam 12:30–5 (fully covered)
-      ev.push(vevent({ uid: `w${w}-tue-1`, date: d(w, 1), from: "09:00", to: "12:30", title: "Shift - Ana", location: "SCSM office" }));
-      ev.push(vevent({ uid: `w${w}-tue-2`, date: d(w, 1), from: "12:30", to: "17:00", title: "Shift - Sam", location: "SCSM office" }));
-      // Wednesday: odd times — Elina 10:15–11:45, Jo 12:00–5
-      ev.push(vevent({ uid: `w${w}-wed-1`, date: d(w, 2), from: "10:15", to: "11:45", title: "Elina", location: "SCSM office" }));
-      ev.push(vevent({ uid: `w${w}-wed-2`, date: d(w, 2), from: "12:00", to: "17:00", title: "Jo (front desk)", location: "SCSM office" }));
-      // Thursday afternoon: overlap Maria 1–4 and Sam 3–5
-      ev.push(vevent({ uid: `w${w}-thu-2`, date: d(w, 3), from: "13:00", to: "16:00", title: "Front desk: Maria", location: "SCSM office" }));
-      ev.push(vevent({ uid: `w${w}-thu-3`, date: d(w, 3), from: "15:00", to: "17:00", title: "Front desk: Sam", location: "SCSM office" }));
-      // Friday: Sam 9–10:30, gap, Jo 12–3, gap
-      ev.push(vevent({ uid: `w${w}-fri-1`, date: d(w, 4), from: "09:00", to: "10:30", title: "Front desk: Sam", location: "SCSM office" }));
-      ev.push(vevent({ uid: `w${w}-fri-2`, date: d(w, 4), from: "12:00", to: "15:00", title: "Front desk: Jo", location: "SCSM office" }));
-    }
-    // A repeating Thursday-morning shift (Ana 9–1), with next week's occurrence cancelled.
-    ev.push(vevent({
-      uid: "ana-thu", date: d(-1, 3), from: "09:00", to: "13:00", title: "Front desk: Ana", location: "SCSM office",
-      rrule: `FREQ=WEEKLY;COUNT=8`,
-    }));
-    ev.push(vevent({
-      uid: "ana-thu", date: d(1, 3), from: "09:00", to: "13:00", title: "Front desk: Ana",
-      extra: [`RECURRENCE-ID;TZID=${TZ}:${dt(d(1, 3), "09:00")}`, "STATUS:CANCELLED"],
-    }));
-    return wrap("Student Work Schedule", ev);
-  }
 
   if (name === "school") {
     ev.push(vevent({ uid: "s1", date: d(0, 2), from: "12:00", to: "13:00", title: "Faculty meeting", location: "Hancock 2023", description: "Monthly faculty meeting. Lunch provided." }));

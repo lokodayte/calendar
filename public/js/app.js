@@ -4,14 +4,13 @@ import { api, apiFeed, getToken, setToken, clearToken, whenSignedOut, apiConfigu
 import { $, $$, h, toast, setErr, confirmDialog, busy, colorPicker, sourceIcon, SOURCES, fmtDate, fmtTime, linkify, eventColors } from "./dom.js";
 import { TZ, zonedToUtc, parseHm, addDays, ymd } from "./tz.js";
 import { parseIcs, expandIcs } from "./ics.js";
-import { initCoverage } from "./coverage-view.js";
 import { initAdmin } from "./admin-view.js";
 import { initPublic } from "./public-view.js";
 
 const ICAL = window.ICAL;
 
 const S = {
-  me: null, site: null, calendars: [], myFeeds: [], visible: {}, coverage: null,
+  me: null, site: null, calendars: [], myFeeds: [], visible: {},
   events: [],              // my personal events (from the server)
   feeds: new Map(),        // key -> {at, promise, parsed, stale, error}
   fc: null,
@@ -129,7 +128,7 @@ function isOn(key) {
   return true;
 }
 
-/** Load (once every 5 minutes) and parse a feed. Shared by the calendar and the coverage view. */
+/** Load (once every 5 minutes) and parse a feed. */
 export function loadFeed(key) {
   const cached = S.feeds.get(key);
   if (cached && Date.now() - cached.at < 5 * 60e3) return cached.promise;
@@ -536,20 +535,19 @@ $("#ffDelete").onclick = async () => {
    Tabs, menu, dialogs
    ===================================================================== */
 
-let coverageView = null, adminView = null;
+let adminView = null;
 
 function showTab(tab) {
   if (tab === "public") { showPublic(); return; }
   $("#public").hidden = true;
   $("#app").hidden = false;
   if (tab === "admin" && !S.me?.isAdmin) tab = "calendar";
-  if (!["calendar", "coverage", "admin"].includes(tab)) tab = "calendar";
+  if (!["calendar", "admin"].includes(tab)) tab = "calendar";
   S.tab = tab;
   for (const b of $$(".tabs [role=tab]")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
   for (const v of $$(".view")) v.hidden = v.dataset.view !== tab;
   $("#btnDrawer").style.visibility = tab === "calendar" ? "" : "hidden";
   if (tab === "calendar" && S.fc) S.fc.updateSize();
-  if (tab === "coverage") coverageView.show();
   if (tab === "admin") adminView.show();
   if (location.hash.slice(1) !== tab) history.replaceState(null, "", `#${tab}`);
 }
@@ -589,7 +587,6 @@ async function reload() {
   S.calendars = data.calendars;
   S.myFeeds = data.myFeeds;
   S.visible = data.visible || {};
-  S.coverage = data.coverage;
   S.feeds.clear();
   feedState.clear();
   try { await loadMyEvents(); }
@@ -620,7 +617,7 @@ async function reload() {
 const ctx = {
   get state() { return S; },
   loadFeed,
-  reload: async () => { await reload(); coverageView.invalidate(); },
+  reload,
 };
 
 async function start() {
@@ -641,7 +638,6 @@ async function start() {
   if (!S.fc) {
     buildCalendar();
     refreshSources();
-    coverageView = initCoverage($("#coverageRoot"), ctx);
     adminView = initAdmin($("#adminRoot"), ctx);
   }
   showTab(location.hash.slice(1) || "calendar");

@@ -400,13 +400,13 @@ describe("admin-only endpoints", () => {
     const secretUrl = "https://outlook.office365.com/owa/calendar/abc/SECRET123/calendar.ics";
     feeds.set(secretUrl, ICS());
     const admin = await signIn(ADMIN);
-    const created = await call("POST", "/api/admin/calendars", { token: admin, body: { name: "Student Work Schedule", color: "#B07A00", url: secretUrl, isShift: true, owner: "Office" } });
+    const created = await call("POST", "/api/admin/calendars", { token: admin, body: { name: "Staff Events", color: "#B07A00", url: secretUrl, owner: "Office" } });
     assert.equal(created.status, 201);
     assert.equal(created.data.calendar.source, "outlook");
     const a = await signIn(A);
     const boot = await call("GET", "/api/bootstrap", { token: a });
     assert.ok(!boot.text.includes("SECRET123"));
-    assert.equal(boot.data.calendars[0].isShift, true);
+    assert.equal(boot.data.calendars[0].owner, "Office");
     const feed = await call("GET", `/api/feeds/shared/${created.data.calendar.id}`, { token: a });
     assert.equal(feed.status, 200);
     assert.ok(!JSON.stringify([...feed.headers]).includes("SECRET123"));
@@ -450,17 +450,17 @@ describe("admin-only endpoints", () => {
     const admin = await signIn(ADMIN);
     const c1 = (await call("POST", "/api/admin/calendars", { token: admin, body: { name: "One", color: "#111111", url: "https://example.com/a.ics" } })).data.calendar;
     const c2 = (await call("POST", "/api/admin/calendars", { token: admin, body: { name: "Two", color: "#222222", url: "https://example.com/a.ics", defaultOn: false } })).data.calendar;
-    assert.equal((await call("PUT", `/api/admin/calendars/${c1.id}`, { token: admin, body: { name: "One!", isShift: true } })).status, 200);
+    assert.equal((await call("PUT", `/api/admin/calendars/${c1.id}`, { token: admin, body: { name: "One!", audience: "staff" } })).status, 200);
     assert.equal((await call("POST", "/api/admin/calendars/order", { token: admin, body: { ids: [c2.id, c1.id] } })).status, 200);
-    const s = await call("PUT", "/api/admin/settings", { token: admin, body: { siteTitle: "SCSM Staff", coverage: { minStaff: 2, slotMinutes: 15, closed: [{ from: "2026-11-26", to: "2026-11-27", label: "Thanksgiving" }] } } });
+    const s = await call("PUT", "/api/admin/settings", { token: admin, body: { siteTitle: "SCSM Staff", publicTagline: "Everything happening at SCSM." } });
     assert.equal(s.status, 200);
-    assert.equal(s.data.coverage.minStaff, 2);
-    assert.equal(s.data.coverage.slotMinutes, 15);
+    assert.equal(s.data.publicTagline, "Everything happening at SCSM.");
+    assert.equal((await call("GET", "/api/public")).data.site.tagline, "Everything happening at SCSM.");
     const a = await signIn(A);
     const boot = (await call("GET", "/api/bootstrap", { token: a })).data;
     assert.deepEqual(boot.calendars.map((c) => c.name), ["Two", "One!"]);
     assert.equal(boot.site.title, "SCSM Staff");
-    assert.equal(boot.coverage.closed[0].label, "Thanksgiving");
+    assert.equal(boot.coverage, undefined);
     const actions = (await call("GET", "/api/admin/log", { token: admin })).data.log.map((l) => l.action);
     assert.deepEqual(actions.slice(0, 5), ["settings.edit", "calendar.reorder", "calendar.edit", "calendar.add", "calendar.add"]);
   });
@@ -564,7 +564,7 @@ describe("housekeeping", () => {
   test("big feeds are cached as plain text and old gzip rows still read back", async () => {
     const url = "https://outlook.office365.com/owa/calendar/big/calendar.ics";
     let body = "BEGIN:VCALENDAR\r\n";
-    for (let i = 0; i < 4000; i++) body += `BEGIN:VEVENT\r\nUID:${i}\r\nDTSTART:20261001T160000Z\r\nDTEND:20261001T170000Z\r\nSUMMARY:Shift ${i}\r\nEND:VEVENT\r\n`;
+    for (let i = 0; i < 4000; i++) body += `BEGIN:VEVENT\r\nUID:${i}\r\nDTSTART:20261001T160000Z\r\nDTEND:20261001T170000Z\r\nSUMMARY:Event ${i}\r\nEND:VEVENT\r\n`;
     body += "END:VCALENDAR\r\n";
     feeds.set(url, body);
     const admin = await signIn(ADMIN);

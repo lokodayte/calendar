@@ -5,7 +5,6 @@ import * as v from "./lib/validate.js";
 import { LIMITS, getSettings, devMode, isSuperAdmin, superAdmins, personFromRow, ROLES, ROLE_LABEL, AUDIENCES } from "./settings.js";
 import { detectSource, downloadIcs, dropCache, summarizeIcs } from "./feeds.js";
 import { sendEmail, welcomeEmail, emailProvider, pauseBetweenEmails } from "./email.js";
-import { normalizeCoverage } from "../../public/js/coverage.js";
 
 const logStmt = (env, actor, action, detail) =>
   env.DB.prepare("INSERT INTO admin_log (at, actor, action, detail) VALUES (?, ?, ?, ?)").bind(Date.now(), actor, action, String(detail).slice(0, 1000));
@@ -153,7 +152,7 @@ const AUD_LABEL = { public: "public", everyone: "everyone signed in", staff: "st
 
 const calOut = (c) => ({
   id: c.id, name: c.name, color: c.color, url: c.url, source: c.source, owner: c.owner,
-  defaultOn: !!c.default_on, isShift: !!c.is_shift, sortOrder: c.sort_order, audience: c.audience,
+  defaultOn: !!c.default_on, sortOrder: c.sort_order, audience: c.audience,
 });
 
 function calIn(env, body) {
@@ -165,7 +164,6 @@ function calIn(env, body) {
     source: v.source(body.source) || detectSource(url),
     owner: v.text(body.owner, "Owner or contact", 120),
     defaultOn: body.defaultOn === undefined ? true : v.bool(body.defaultOn),
-    isShift: v.bool(body.isShift),
     audience: AUDIENCES.includes(body.audience) ? body.audience : "everyone",
   };
 }
@@ -181,10 +179,10 @@ export async function createCalendar(req, env, ctx, user) {
   if (n.n >= LIMITS.MAX_CALENDARS) fail(400, `Up to ${LIMITS.MAX_CALENDARS} shared calendars.`);
   const now = Date.now();
   const row = await env.DB.prepare(
-    `INSERT INTO calendars (name, color, url, source, owner, default_on, is_shift, audience, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
-  ).bind(c.name, c.color, c.url, c.source, c.owner, c.defaultOn ? 1 : 0, c.isShift ? 1 : 0, c.audience, n.maxo + 1, now, now).first();
-  await logStmt(env, user.email, "calendar.add", `Added calendar “${c.name}” (${AUD_LABEL[c.audience]}${c.isShift ? ", shift calendar" : ""})`).run();
+    `INSERT INTO calendars (name, color, url, source, owner, default_on, audience, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+  ).bind(c.name, c.color, c.url, c.source, c.owner, c.defaultOn ? 1 : 0, c.audience, n.maxo + 1, now, now).first();
+  await logStmt(env, user.email, "calendar.add", `Added calendar “${c.name}” (${AUD_LABEL[c.audience]})`).run();
   return json({ calendar: calOut(row) }, 201);
 }
 
@@ -201,12 +199,11 @@ export async function updateCalendar(req, env, ctx, user, params) {
   if (c.source !== cur.source) changed.push(`source → ${c.source}`);
   if (c.owner !== cur.owner) changed.push("owner");
   if (c.defaultOn !== !!cur.default_on) changed.push(c.defaultOn ? "on by default" : "off by default");
-  if (c.isShift !== !!cur.is_shift) changed.push(c.isShift ? "marked as shift calendar" : "no longer a shift calendar");
   if (c.audience !== cur.audience) changed.push(`who can see it → ${AUD_LABEL[c.audience]}`);
   const stmts = [env.DB.prepare(
-    `UPDATE calendars SET name = ?, color = ?, url = ?, source = ?, owner = ?, default_on = ?, is_shift = ?, audience = ?, updated_at = ?
+    `UPDATE calendars SET name = ?, color = ?, url = ?, source = ?, owner = ?, default_on = ?, audience = ?, updated_at = ?
      WHERE id = ? RETURNING *`,
-  ).bind(c.name, c.color, c.url, c.source, c.owner, c.defaultOn ? 1 : 0, c.isShift ? 1 : 0, c.audience, Date.now(), id)];
+  ).bind(c.name, c.color, c.url, c.source, c.owner, c.defaultOn ? 1 : 0, c.audience, Date.now(), id)];
   if (c.url !== cur.url) stmts.push(dropCache(env, `shared:${id}`));
   if (changed.length) stmts.push(logStmt(env, user.email, "calendar.edit", `Edited “${cur.name}”: ${changed.join(", ")}`));
   const [res] = await env.DB.batch(stmts);
@@ -262,7 +259,7 @@ export async function testFeed(req, env) {
 export async function getAdminSettings(req, env) {
   const s = await getSettings(env);
   return json({
-    siteTitle: s.site_title, senderName: s.sender_name, publicTagline: s.public_tagline, coverage: s.coverage, siteUrl: env.SITE_URL || "",
+    siteTitle: s.site_title, senderName: s.sender_name, publicTagline: s.public_tagline, siteUrl: env.SITE_URL || "",
     emailProvider: emailProvider(env) || (devMode(env) ? "dev" : null),
     emailStatus: s.email_status && s.email_status.error ? s.email_status : null,
   });
@@ -286,15 +283,6 @@ export async function saveAdminSettings(req, env, ctx, user) {
   if (body.senderName !== undefined) {
     const t = v.text(body.senderName, "Sender name", 60, { required: true });
     if (t !== before.sender_name) { put("sender_name", t); changed.push(`sender name → “${t}”`); }
-  }
-  if (body.coverage !== undefined) {
-    if (!body.coverage || typeof body.coverage !== "object") fail(400, "Invalid coverage settings.");
-    for (const c of body.coverage.closed || []) {
-      if (!v.isDate(c.from) || (c.to && !v.isDate(c.to))) fail(400, "Closed dates must be real dates.");
-    }
-    if ((body.coverage.closed || []).length > 200) fail(400, "Too many closed dates.");
-    const cov = normalizeCoverage(body.coverage);
-    if (JSON.stringify(cov) !== JSON.stringify(before.coverage)) { put("coverage", cov); changed.push("desk coverage settings"); }
   }
   if (stmts.length) {
     stmts.push(logStmt(env, user.email, "settings.edit", `Changed ${changed.join(", ")}`));
