@@ -101,7 +101,6 @@ input.code { font: 600 28px var(--body); letter-spacing: .45em; text-align: cent
 .pill.role-superadmin { background: var(--ink); color: #fff; }
 .pill.role-admin { background: var(--accent-soft); color: var(--accent-hover); }
 .pill.role-staff { background: var(--plum-soft); color: var(--plum); }
-.pill.role-assistant { background: #E6F4F1; color: #17766A; }
 .pill.warn-pill { background: var(--warn-bg); color: var(--warn-ink); }
 
 .boot { display: flex; gap: 12px; align-items: center; justify-content: center; min-height: 100vh; color: var(--ink-2); padding: 24px; text-align: center; }

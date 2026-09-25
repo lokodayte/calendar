@@ -9,7 +9,7 @@ INSERT INTO calendars (name, color, url, source, owner, default_on, audience, so
   ('Social Media',          '#1E8E62', 'sample:social', 'outlook', '',               0, 'staff',  3, 0, 0);
 
 DELETE FROM staff WHERE added_by = 'seed';
-INSERT INTO staff (email, name, role, access_until, added_at, added_by) VALUES
-  ('staff@marist.edu',     'Sam Rivera',   'staff',     NULL,         0, 'seed'),
-  ('elina@marist.edu',     'Elina Park',   'assistant', '2026-12-18', 0, 'seed'),
-  ('admin@marist.edu',     'Alex Morgan',  'admin',     NULL,         0, 'seed');
+INSERT INTO staff (email, name, role, added_at, added_by) VALUES
+  ('staff@marist.edu',  'Sam Rivera',  'staff', 0, 'seed'),
+  ('elina@marist.edu',  'Elina Park',  'staff', 0, 'seed'),
+  ('admin@marist.edu',  'Alex Morgan', 'admin', 0, 'seed');

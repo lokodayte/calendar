@@ -36,33 +36,19 @@ export function superAdmins(env) {
 }
 export const isSuperAdmin = (env, email) => superAdmins(env).includes(email);
 
-export const ROLES = ["admin", "staff", "assistant"];
-export const ROLE_LABEL = { superadmin: "Super admin", admin: "Admin", staff: "Staff", assistant: "Student assistant" };
-export const AUDIENCES = ["public", "everyone", "staff"];
+export const ROLES = ["admin", "staff"];
+export const ROLE_LABEL = { superadmin: "Super admin", admin: "Admin", staff: "Staff" };
 
-/** Calendars a signed-in person may see. Student assistants don't see "staff only" calendars. */
-export const visibleAudiences = (user) => (user.role === "assistant" ? ["public", "everyone"] : AUDIENCES);
-
-/** Today's date in Eastern Time, for "access until" checks. */
-export function todayNY() {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-}
-
-/**
- * Who is this email? {role, name, accessUntil, expired} or null if they aren't on the list.
- * Super admins always get role "superadmin".
- */
+/** Who is this email? {role, name} or null if they aren't on the list. Super admins always get role "superadmin". */
 export async function lookupPerson(env, email) {
-  const row = await env.DB.prepare("SELECT role, name, access_until FROM staff WHERE email = ?").bind(email).first();
-  if (isSuperAdmin(env, email)) return { role: "superadmin", name: row?.name || "", accessUntil: null, expired: false };
+  const row = await env.DB.prepare("SELECT role, name FROM staff WHERE email = ?").bind(email).first();
+  if (isSuperAdmin(env, email)) return { role: "superadmin", name: row?.name || "" };
   if (!row) return null;
   return personFromRow(row);
 }
 
 export function personFromRow(row) {
-  const role = ROLES.includes(row.role) ? row.role : "staff";
-  const accessUntil = row.access_until || null;
-  return { role, name: row.name || "", accessUntil, expired: !!accessUntil && accessUntil < todayNY() };
+  return { role: ROLES.includes(row.role) ? row.role : "staff", name: row.name || "" };
 }
 
 export const devMode = (env) => String(env.DEV_MODE || "").toLowerCase() === "true";

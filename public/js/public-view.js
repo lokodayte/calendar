@@ -91,17 +91,19 @@ export function initPublic({ openEvent }) {
   function buildCalendar() {
     const phone = window.matchMedia("(max-width: 820px)").matches;
     fc = new FullCalendar.Calendar($("#pubCalendar"), {
-      initialView: phone ? "listMonth" : "dayGridMonth",
+      // "List" = 7 days starting today; the arrows step back or forward a week at a time.
+      views: { listNext7: { type: "list", duration: { days: 7 }, buttonText: "List" } },
+      initialView: phone ? "listNext7" : "dayGridMonth",
       headerToolbar: phone
-        ? { left: "prev,next today", center: "", right: "listMonth,dayGridMonth" }
-        : { left: "prev,next today", center: "title", right: "dayGridMonth,listMonth" },
+        ? { left: "prev,next today", center: "", right: "listNext7,dayGridMonth" }
+        : { left: "prev,next today", center: "title", right: "dayGridMonth,listNext7" },
       footerToolbar: phone ? { center: "title" } : false,
       buttonText: { today: "Today", month: "Month", list: "List" },
       height: "auto",
       dayMaxEventRows: 4,
       eventDisplay: "block",
       eventTimeFormat: { hour: "numeric", minute: "2-digit", omitZeroMinute: true, meridiem: "short" },
-      noEventsContent: "No events this month.",
+      noEventsContent: "No events in these days.",
       eventClick(i) { i.jsEvent.preventDefault(); openEvent(i.event); },
     });
     fc.render();

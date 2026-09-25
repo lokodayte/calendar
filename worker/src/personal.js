@@ -3,7 +3,7 @@
 
 import { fail, json, readJson } from "./lib/http.js";
 import * as v from "./lib/validate.js";
-import { LIMITS, getSettings, devMode, visibleAudiences, ROLE_LABEL } from "./settings.js";
+import { LIMITS, getSettings, devMode, ROLE_LABEL } from "./settings.js";
 import { detectSource, downloadIcs, dropCache, feedResponse, getFeed } from "./feeds.js";
 
 const addDaysIso = (date, n) => new Date(Date.parse(date + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
@@ -17,15 +17,12 @@ const sharedPublic = (c) => ({
   id: c.id, name: c.name, color: c.color, source: c.source, owner: c.owner,
   defaultOn: !!c.default_on, audience: c.audience,
 });
-const inList = (xs) => xs.map(() => "?").join(", ");
 const feedPublic = (f) => ({ id: f.id, name: f.name, color: f.color, source: f.source, host: hostOf(f.url) });
 
 /** GET /api/bootstrap — everything the app needs on load. Shared calendar links are never included. */
 export async function bootstrap(req, env, ctx, user) {
-  const aud = visibleAudiences(user);
   const [cals, feeds, prefs] = await env.DB.batch([
-    env.DB.prepare(`SELECT id, name, color, source, owner, default_on, audience FROM calendars
-      WHERE audience IN (${inList(aud)}) ORDER BY sort_order, id`).bind(...aud),
+    env.DB.prepare("SELECT id, name, color, source, owner, default_on, audience FROM calendars ORDER BY sort_order, id"),
     env.DB.prepare("SELECT id, name, color, url, source FROM personal_feeds WHERE email = ? ORDER BY id").bind(user.email),
     env.DB.prepare("SELECT visible FROM user_prefs WHERE email = ?").bind(user.email),
   ]);
@@ -59,10 +56,10 @@ export async function savePrefs(req, env, ctx, user) {
 
 /* ---------- feeds ---------- */
 
-/** GET /api/feeds/shared/:id — signed-in people, for calendars their role may see. */
+/** GET /api/feeds/shared/:id — any signed-in person. */
 export async function sharedFeed(req, env, ctx, user, params) {
   const cal = await env.DB.prepare("SELECT id, name, url, audience FROM calendars WHERE id = ?").bind(v.id(params.id)).first();
-  if (!cal || !visibleAudiences(user).includes(cal.audience)) fail(404, "That calendar was removed.");
+  if (!cal) fail(404, "That calendar was removed.");
   try { return feedResponse(await getFeed(env, ctx, `shared:${cal.id}`, cal.url)); }
   catch (err) { fail(502, `Couldn't load ${cal.name} right now: ${err.message}.`); }
 }

@@ -56,16 +56,13 @@ export function initAdmin(root, ctx) {
 
   /* ================= Staff ================= */
 
-  const ROLE_OPTS = [["staff", "Staff"], ["assistant", "Student assistant"], ["admin", "Admin"]];
+  const ROLE_OPTS = [["staff", "Staff"], ["admin", "Admin"]];
   let roleFilter = "all";
   const me = () => ctx.state.me;
 
   function renderStaff() {
     const ta = h("textarea", { rows: 3, placeholder: "Paste emails — one per line, or separated by commas.\nNames work too: Jane Smith <jane.smith@marist.edu>", "aria-label": "Emails to add" });
     const role = h("select", { "aria-label": "Role for these people" }, ROLE_OPTS.map(([v0, t]) => h("option", { value: v0, text: t })));
-    const until = h("input", { type: "date", "aria-label": "Access until (optional)" });
-    const untilBox = h("div", { hidden: true }, h("label", { text: "Access until (optional)" }), until);
-    role.addEventListener("change", () => { untilBox.hidden = role.value !== "assistant"; });
     const welcome = h("input", { type: "checkbox" });
     const result = h("p", { class: "muted add-result", hidden: true });
     const addBtn = h("button", { class: "btn primary", type: "submit", text: "Add people" });
@@ -73,7 +70,6 @@ export function initAdmin(root, ctx) {
       ta,
       h("div", { class: "inline-row" },
         h("div", {}, h("label", { text: "Add them as" }), role),
-        untilBox,
         h("span", { class: "grow" }),
         addBtn),
       h("label", { class: "check" }, welcome, h("span", { text: "Send them a welcome email with the site link (uses your monthly email allowance; up to 20 at a time)" })),
@@ -83,7 +79,7 @@ export function initAdmin(root, ctx) {
       if (!ta.value.trim()) return;
       await busy(addBtn, "Adding…", async () => {
         try {
-          const r = await api("/api/admin/staff", { method: "POST", body: { emails: ta.value, role: role.value, accessUntil: role.value === "assistant" ? until.value || null : null, welcome: welcome.checked } });
+          const r = await api("/api/admin/staff", { method: "POST", body: { emails: ta.value, role: role.value, welcome: welcome.checked } });
           const parts = [];
           parts.push(r.added.length ? `Added ${r.added.length}: ${r.added.join(", ")}.` : "No new people added.");
           if (r.already.length) parts.push(`Already on the list: ${r.already.join(", ")}. Change their role in the table below.`);
@@ -98,7 +94,7 @@ export function initAdmin(root, ctx) {
 
     const counts = { all: D.staff.length };
     for (const p of D.staff) counts[p.role] = (counts[p.role] || 0) + 1;
-    const filters = [["all", "Everyone"], ["superadmin", "Super admins"], ["admin", "Admins"], ["staff", "Staff"], ["assistant", "Student assistants"]];
+    const filters = [["all", "Everyone"], ["superadmin", "Super admins"], ["admin", "Admins"], ["staff", "Staff"]];
     const seg = h("div", { class: "seg", role: "group", "aria-label": "Show" }, filters.filter(([k]) => k === "all" || counts[k]).map(([k, t]) =>
       h("button", { type: "button", "aria-pressed": String(roleFilter === k), onclick: () => { roleFilter = k; renderStaff(); } }, t, h("span", { class: "n", text: String(counts[k] || 0) }))));
     const search = h("input", { type: "search", placeholder: "Find a person…", value: filter, "aria-label": "Find a person", style: { "max-width": "280px" } });
@@ -136,8 +132,7 @@ export function initAdmin(root, ctx) {
       const sel = h("select", { class: "role-select", "aria-label": `Role for ${p.email}` },
         ROLE_OPTS.map(([v0, t]) => h("option", { value: v0, text: t, selected: p.role === v0 })));
       sel.addEventListener("change", () => changeRole(p, sel));
-      roleCell = h("td", {}, sel,
-        p.accessUntil ? h("div", { class: "small", style: { "margin-top": "4px", color: p.expired ? "var(--danger)" : "var(--ink-3)" }, text: p.expired ? `Access ended ${p.accessUntil}` : `Until ${p.accessUntil}` }) : null);
+      roleCell = h("td", {}, sel);
     }
     return h("tr", {},
       who, roleCell,
@@ -166,16 +161,14 @@ export function initAdmin(root, ctx) {
 
   function editPerson(p) {
     const name = h("input", { value: p.name || "", maxlength: 80, placeholder: "e.g. Jane Smith" });
-    const until = h("input", { type: "date", value: p.accessUntil || "" });
     const err = h("p", { class: "err", hidden: true });
     const save = h("button", { class: "btn primary", type: "button", text: "Save" });
     const d = modal(`Edit ${p.email}`, h("div", { style: { display: "flex", "flex-direction": "column", gap: "12px" } },
       field("Name", name),
-      field("Access until (optional)", until, "After this day they can't sign in anymore — handy for student assistants at the end of a semester. Leave empty for no end."),
       err), [h("button", { class: "btn", type: "button", text: "Cancel", onclick: () => d.close() }), save]);
     save.onclick = () => busy(save, "Saving…", async () => {
       try {
-        await api(`/api/admin/staff/${encodeURIComponent(p.email)}`, { method: "PUT", body: { name: name.value.trim(), accessUntil: until.value || null } });
+        await api(`/api/admin/staff/${encodeURIComponent(p.email)}`, { method: "PUT", body: { name: name.value.trim() } });
         d.close();
         toast("Saved.");
         await reloadStaff();
@@ -229,14 +222,14 @@ export function initAdmin(root, ctx) {
           h("div", { class: "nm", text: c.name }),
           h("div", { class: "meta" },
             h("span", { class: "pill", style: { display: "inline-flex", gap: "5px", "align-items": "center" } }, h("span", { style: { display: "inline-flex", width: "13px" } }, sourceIcon(c.source)), SOURCES[c.source].label),
-            h("span", { class: `pill ${c.audience === "public" ? "role-admin" : c.audience === "staff" ? "role-staff" : ""}`, text: { public: "Public", everyone: "Everyone signed in", staff: "Staff only" }[c.audience || "everyone"] }),
+            h("span", { class: `pill ${c.audience === "public" ? "role-admin" : "role-staff"}`, text: c.audience === "public" ? "Public" : "Staff only" }),
             c.defaultOn ? null : h("span", { class: "pill", text: "Off by default" }),
             c.owner ? h("span", { class: "muted small", text: `Contact: ${c.owner}` }) : null)),
         h("button", { class: "btn small", type: "button", text: "Edit", onclick: () => editCalendar(c) })));
     });
     calPanel.replaceChildren(
       h("h2", { text: "Shared calendars" }),
-      h("p", { class: "muted sub", text: "Choose who sees each one: the public front page, everyone signed in, or staff only. The links stay on the server — nobody else ever sees them." }),
+      h("p", { class: "muted sub", text: "Choose who sees each one: anyone on the public front page, or only signed-in staff. The links stay on the server — nobody else ever sees them." }),
       D.calendars.length ? rows : h("p", { class: "muted", text: "No shared calendars yet. Add the Student Work Schedule, School Events, Club Events and Social Media." }),
       h("div", {}, h("button", { class: "btn primary", type: "button", text: "+ Add shared calendar", onclick: () => editCalendar(null) })));
   }
@@ -254,7 +247,7 @@ export function initAdmin(root, ctx) {
   }
 
   function editCalendar(cal) {
-    const c = cal || { name: "", color: "#E0475B", url: "", source: "", owner: "", defaultOn: true, audience: "everyone" };
+    const c = cal || { name: "", color: "#E0475B", url: "", source: "", owner: "", defaultOn: true, audience: "staff" };
     let sourceTouched = !!cal;
     const name = h("input", { maxlength: 80, value: c.name, required: true });
     const url = h("input", { maxlength: 2000, value: c.url, placeholder: "https://outlook.office365.com/owa/calendar/…/calendar.ics", spellcheck: "false", autocomplete: "off" });
@@ -267,8 +260,8 @@ export function initAdmin(root, ctx) {
     const picked = colorPicker(colors, c.color);
     const defaultOn = h("input", { type: "checkbox", checked: c.defaultOn });
     const audience = h("select", {},
-      [["public", "Public — anyone, on the front page (no sign-in)"], ["everyone", "Everyone signed in (staff and student assistants)"], ["staff", "Staff only (hidden from student assistants)"]]
-        .map(([v0, t]) => h("option", { value: v0, text: t, selected: (c.audience || "everyone") === v0 })));
+      [["public", "Public — anyone, on the front page (no sign-in)"], ["staff", "Staff only — people who sign in"]]
+        .map(([v0, t]) => h("option", { value: v0, text: t, selected: (c.audience === "public" ? "public" : "staff") === v0 })));
     const testOut = h("div", { class: "test-result", hidden: true });
     const err = h("p", { class: "err", hidden: true });
     const testBtn = h("button", { class: "btn", type: "button", text: "Test link" });

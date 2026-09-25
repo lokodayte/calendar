@@ -628,43 +628,35 @@ describe("roles", () => {
 
   test("pasting people keeps their names and role; super admins in a paste are skipped", async () => {
     const boss = await signIn(ADMIN);
-    const r = await call("POST", "/api/admin/staff", { token: boss, body: { emails: `Carol Diaz <${C}>\nDan\tdan@marist.edu\n${ADMIN}`, role: "assistant", accessUntil: "2030-05-15" } });
+    const r = await call("POST", "/api/admin/staff", { token: boss, body: { emails: `Carol Diaz <${C}>\nDan\tdan@marist.edu\n${ADMIN}`, role: "admin" } });
     assert.deepEqual(r.data.added.sort(), [C, "dan@marist.edu"]);
     const people = (await call("GET", "/api/admin/staff", { token: boss })).data.staff;
     const carol = people.find((p) => p.email === C);
-    assert.deepEqual([carol.name, carol.role, carol.roleLabel, carol.accessUntil], ["Carol Diaz", "assistant", "Student assistant", "2030-05-15"]);
+    assert.deepEqual([carol.name, carol.role, carol.roleLabel], ["Carol Diaz", "admin", "Admin"]);
     assert.equal(people.find((p) => p.email === "dan@marist.edu").name, "Dan");
     assert.equal(people.find((p) => p.email === ADMIN).role, "superadmin");
-    assert.equal((await call("POST", "/api/admin/staff", { token: boss, body: { emails: "x@marist.edu", role: "superadmin" } })).status, 400);
   });
 
-  test("student assistants don't see staff-only calendars", async () => {
-    feeds.set("https://example.com/a.ics", ICS("For everyone"));
-    feeds.set("https://example.com/s.ics", ICS("Staff meeting"));
+  test("the only roles are Admin and Staff", async () => {
     const boss = await signIn(ADMIN);
-    const everyone = (await call("POST", "/api/admin/calendars", { token: boss, body: { name: "Events", color: "#111111", url: "https://example.com/a.ics" } })).data.calendar;
-    const staffOnly = (await call("POST", "/api/admin/calendars", { token: boss, body: { name: "Staff", color: "#222222", url: "https://example.com/s.ics", audience: "staff" } })).data.calendar;
-    assert.equal(everyone.audience, "everyone");
-    await call("POST", "/api/admin/staff", { token: boss, body: { emails: C, role: "assistant" } });
-    const c = await signIn(C);
-    const boot = (await call("GET", "/api/bootstrap", { token: c })).data;
-    assert.deepEqual(boot.calendars.map((x) => x.name), ["Events"]);
-    assert.equal(boot.me.roleLabel, "Student assistant");
-    assert.equal((await call("GET", `/api/feeds/shared/${staffOnly.id}`, { token: c })).status, 404);
-    assert.equal((await call("GET", `/api/feeds/shared/${everyone.id}`, { token: c })).status, 200);
+    for (const role of ["superadmin", "assistant", "owner"]) {
+      assert.equal((await call("POST", "/api/admin/staff", { token: boss, body: { emails: C, role } })).status, 400, role);
+    }
+    assert.equal((await put(boss, A, { role: "assistant" })).status, 400);
+  });
+
+  test("everyone signed in sees every shared calendar; new calendars are staff-only unless made public", async () => {
+    feeds.set("https://example.com/a.ics", ICS("Staff thing"));
+    feeds.set("https://example.com/p.ics", ICS("Open house"));
+    const boss = await signIn(ADMIN);
+    const staffCal = (await call("POST", "/api/admin/calendars", { token: boss, body: { name: "Staff", color: "#111111", url: "https://example.com/a.ics" } })).data.calendar;
+    const pubCal = (await call("POST", "/api/admin/calendars", { token: boss, body: { name: "Events", color: "#222222", url: "https://example.com/p.ics", audience: "public" } })).data.calendar;
+    assert.deepEqual([staffCal.audience, pubCal.audience], ["staff", "public"]);
     const a = await signIn(A);
-    assert.deepEqual((await call("GET", "/api/bootstrap", { token: a })).data.calendars.map((x) => x.name), ["Events", "Staff"]);
-  });
-
-  test("access ends after the “access until” date", async () => {
-    const boss = await signIn(ADMIN);
-    await call("POST", "/api/admin/staff", { token: boss, body: { emails: C, role: "assistant", accessUntil: "2099-01-01" } });
-    const c = await signIn(C);
-    await put(boss, C, { accessUntil: "2020-01-01" });
-    assert.equal((await call("GET", "/api/bootstrap", { token: c })).status, 401);
-    const r = await call("POST", "/api/auth/request", { body: { email: C } });
-    assert.equal(r.status, 403);
-    assert.match(r.data.error, /access ended on 2020-01-01/);
+    assert.deepEqual((await call("GET", "/api/bootstrap", { token: a })).data.calendars.map((x) => x.name), ["Staff", "Events"]);
+    assert.equal((await call("GET", `/api/feeds/shared/${staffCal.id}`, { token: a })).status, 200);
+    assert.equal((await call("GET", `/api/public/feeds/${staffCal.id}`)).status, 404);
+    assert.equal((await call("GET", `/api/public/feeds/${pubCal.id}`)).status, 200);
   });
 });
 

@@ -2,7 +2,7 @@
 
 import { fail, json, readJson } from "./lib/http.js";
 import * as v from "./lib/validate.js";
-import { LIMITS, getSettings, devMode, isSuperAdmin, superAdmins, personFromRow, ROLES, ROLE_LABEL, AUDIENCES } from "./settings.js";
+import { LIMITS, getSettings, devMode, isSuperAdmin, superAdmins, personFromRow, ROLES, ROLE_LABEL } from "./settings.js";
 import { detectSource, downloadIcs, dropCache, summarizeIcs } from "./feeds.js";
 import { sendEmail, welcomeEmail, emailProvider, pauseBetweenEmails } from "./email.js";
 
@@ -11,22 +11,21 @@ const logStmt = (env, actor, action, detail) =>
 
 const list = (xs, max = 5) => (xs.length > max ? `${xs.slice(0, max).join(", ")} and ${xs.length - max} more` : xs.join(", "));
 
-/* ---------- people (staff, student assistants, admins) ---------- */
+/* ---------- people (staff and admins) ---------- */
 
 const protectSuper = (env, email) => {
   if (isSuperAdmin(env, email)) fail(403, "Super admins can't be changed from the website. They're set in wrangler.toml.");
 };
 const roleIn = (v0) => {
   const r = String(v0 || "staff");
-  if (!ROLES.includes(r)) fail(400, "Role must be Admin, Staff or Student assistant.");
+  if (!ROLES.includes(r)) fail(400, "Role must be Admin or Staff.");
   return r;
 };
-const untilIn = (v0) => (v0 ? v.date(v0, "Access until") : null);
 
 export async function listStaff(req, env) {
   const now = Date.now();
   const [staff, devices] = await env.DB.batch([
-    env.DB.prepare("SELECT email, name, role, access_until, added_at, added_by, last_sign_in FROM staff ORDER BY email"),
+    env.DB.prepare("SELECT email, name, role, added_at, added_by, last_sign_in FROM staff ORDER BY email"),
     env.DB.prepare("SELECT email, COUNT(*) AS n FROM sessions WHERE expires_at > ? GROUP BY email").bind(now),
   ]);
   const counts = new Map(devices.results.map((r) => [r.email, r.n]));
@@ -34,34 +33,33 @@ export async function listStaff(req, env) {
     const p = personFromRow(r);
     const role = isSuperAdmin(env, r.email) ? "superadmin" : p.role;
     return {
-      email: r.email, name: p.name, role, roleLabel: ROLE_LABEL[role], accessUntil: p.accessUntil, expired: role !== "superadmin" && p.expired,
+      email: r.email, name: p.name, role, roleLabel: ROLE_LABEL[role],
       addedAt: r.added_at, addedBy: r.added_by, lastSignIn: r.last_sign_in, devices: counts.get(r.email) || 0,
     };
   });
   for (const a of superAdmins(env)) {
-    if (!rows.some((r) => r.email === a)) rows.push({ email: a, name: "", role: "superadmin", roleLabel: ROLE_LABEL.superadmin, accessUntil: null, expired: false, addedAt: null, lastSignIn: null, devices: counts.get(a) || 0 });
+    if (!rows.some((r) => r.email === a)) rows.push({ email: a, name: "", role: "superadmin", roleLabel: ROLE_LABEL.superadmin, addedAt: null, lastSignIn: null, devices: counts.get(a) || 0 });
   }
   return json({ staff: rows.sort((a, b) => a.email.localeCompare(b.email)) });
 }
 
-/** POST {emails: "pasted text", role, accessUntil, welcome} — "Name <email>" lines keep the name. */
+/** POST {emails: "pasted text", role, welcome} — "Name <email>" lines keep the name. */
 export async function addStaff(req, env, ctx, user) {
   const body = await readJson(req, 64 * 1024);
   const people = v.peopleFromText(body.emails);
   if (!people.length) fail(400, "No email addresses found. Paste one or more addresses.");
   if (people.length > LIMITS.MAX_STAFF_PER_PASTE) fail(400, `Add up to ${LIMITS.MAX_STAFF_PER_PASTE} people at a time.`);
   const role = roleIn(body.role);
-  const accessUntil = untilIn(body.accessUntil);
   const welcome = v.bool(body.welcome);
   if (welcome && people.length > LIMITS.MAX_WELCOME_EMAILS) fail(400, `Welcome emails can go to up to ${LIMITS.MAX_WELCOME_EMAILS} people at a time. Add fewer people, or untick “Send welcome email”.`);
   const now = Date.now();
   const toAdd = people.filter((p) => !isSuperAdmin(env, p.email));
   const results = toAdd.length ? await env.DB.batch(toAdd.map((p) =>
-    env.DB.prepare("INSERT OR IGNORE INTO staff (email, name, role, access_until, added_at, added_by) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(p.email, p.name, role, accessUntil, now, user.email))) : [];
+    env.DB.prepare("INSERT OR IGNORE INTO staff (email, name, role, added_at, added_by) VALUES (?, ?, ?, ?, ?)")
+      .bind(p.email, p.name, role, now, user.email))) : [];
   const added = toAdd.filter((_, i) => results[i].meta.changes > 0).map((p) => p.email);
   const already = people.map((p) => p.email).filter((e) => !added.includes(e));
-  if (added.length) await logStmt(env, user.email, "people.add", `Added ${added.length} ${ROLE_LABEL[role].toLowerCase()}${added.length === 1 ? "" : "s"}${accessUntil ? ` (until ${accessUntil})` : ""}: ${list(added)}`).run();
+  if (added.length) await logStmt(env, user.email, "people.add", `Added ${added.length} ${ROLE_LABEL[role].toLowerCase()}${added.length === 1 ? "" : "s"}: ${list(added)}`).run();
 
   let welcomed = 0, welcomeFailed = 0;
   if (welcome && added.length) {
@@ -75,25 +73,23 @@ export async function addStaff(req, env, ctx, user) {
   return json({ added, already, welcomed, welcomeFailed });
 }
 
-/** PUT {role?, name?, accessUntil?} — change one person. Super admins can't be changed. */
+/** PUT {role?, name?} — change one person. Super admins can't be changed. */
 export async function updatePerson(req, env, ctx, user, params) {
   const email = v.normEmail(decodeURIComponent(params.email));
   protectSuper(env, email);
   const body = await readJson(req);
-  const cur = await env.DB.prepare("SELECT name, role, access_until FROM staff WHERE email = ?").bind(email).first();
+  const cur = await env.DB.prepare("SELECT name, role FROM staff WHERE email = ?").bind(email).first();
   if (!cur) fail(404, "That person isn't on the list.");
   const next = {
     role: body.role === undefined ? cur.role : roleIn(body.role),
     name: body.name === undefined ? cur.name : v.text(body.name, "Name", 80),
-    accessUntil: body.accessUntil === undefined ? cur.access_until : untilIn(body.accessUntil),
   };
   const changed = [];
   if (next.role !== cur.role) changed.push(`role → ${ROLE_LABEL[next.role]}`);
   if (next.name !== cur.name) changed.push(`name → “${next.name}”`);
-  if ((next.accessUntil || null) !== (cur.access_until || null)) changed.push(next.accessUntil ? `access until ${next.accessUntil}` : "no end date");
   if (changed.length) {
     await env.DB.batch([
-      env.DB.prepare("UPDATE staff SET role = ?, name = ?, access_until = ? WHERE email = ?").bind(next.role, next.name, next.accessUntil, email),
+      env.DB.prepare("UPDATE staff SET role = ?, name = ? WHERE email = ?").bind(next.role, next.name, email),
       logStmt(env, user.email, "people.edit", `Changed ${email}: ${changed.join(", ")}`),
     ]);
   }
@@ -148,7 +144,7 @@ export async function revokeSession(req, env, ctx, user, params) {
 
 /* ---------- shared calendars ---------- */
 
-const AUD_LABEL = { public: "public", everyone: "everyone signed in", staff: "staff only" };
+const AUD_LABEL = { public: "public", staff: "staff only" };
 
 const calOut = (c) => ({
   id: c.id, name: c.name, color: c.color, url: c.url, source: c.source, owner: c.owner,
@@ -164,7 +160,7 @@ function calIn(env, body) {
     source: v.source(body.source) || detectSource(url),
     owner: v.text(body.owner, "Owner or contact", 120),
     defaultOn: body.defaultOn === undefined ? true : v.bool(body.defaultOn),
-    audience: AUDIENCES.includes(body.audience) ? body.audience : "everyone",
+    audience: body.audience === "public" ? "public" : "staff",
   };
 }
 

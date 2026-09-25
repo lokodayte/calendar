@@ -7,7 +7,6 @@ import { LIMITS, getSettings, lookupPerson, personFromRow, isSuperAdmin } from "
 import { sendEmail, codeEmail } from "./email.js";
 
 const NOT_ON_LIST = "Only SCSM staff members can sign in. If you should have access, ask an SCSM admin to add your email.";
-const ended = (date) => `Your access ended on ${date}. If you still need it, ask an SCSM admin.`;
 
 function secret(env) {
   const s = env.SESSION_SECRET;
@@ -19,7 +18,6 @@ function secret(env) {
 async function allowedPerson(env, email) {
   const p = await lookupPerson(env, email);
   if (!p) fail(403, NOT_ON_LIST);
-  if (p.expired) fail(403, ended(p.accessUntil));
   return p;
 }
 
@@ -84,7 +82,7 @@ export async function verifyCode(req, env) {
     fail(400, left > 0 ? `That code isn't right. ${left} ${left === 1 ? "try" : "tries"} left.` : "Too many tries. Request a new code.");
   }
   const person = await lookupPerson(env, email);
-  if (!person || person.expired) { await cancel.run(); fail(403, person ? ended(person.accessUntil) : NOT_ON_LIST); }
+  if (!person) { await cancel.run(); fail(403, NOT_ON_LIST); }
 
   const token = randomToken();
   // "Keep me signed in" (the default) lasts a year; unticked (shared computers) lasts 12 hours.
@@ -114,16 +112,16 @@ export async function authenticate(req, env, ctx) {
   if (!m) fail(401, "Please sign in.");
   const id = await sessionId(env, m[1]);
   const row = await env.DB.prepare(
-    `SELECT s.email, s.last_seen, s.expires_at, p.email AS listed, p.role, p.name, p.access_until
+    `SELECT s.email, s.last_seen, s.expires_at, p.email AS listed, p.role, p.name
      FROM sessions s LEFT JOIN staff p ON p.email = s.email WHERE s.id = ?`,
   ).bind(id).first();
   const now = Date.now();
   if (!row || row.expires_at <= now) fail(401, "Your sign-in has expired. Please sign in again.");
   const isSuper = isSuperAdmin(env, row.email);
   const person = isSuper ? { role: "superadmin", name: row.name || "" } : row.listed ? personFromRow(row) : null;
-  if (!person || person.expired) {
+  if (!person) {
     await env.DB.prepare("DELETE FROM sessions WHERE email = ?").bind(row.email).run();
-    fail(401, person ? ended(person.accessUntil) : "This email doesn't have access anymore.");
+    fail(401, "This email doesn't have access anymore.");
   }
   // Only record "last seen" about twice a day, to keep database writes low.
   if (now - row.last_seen > 12 * 3600e3) {

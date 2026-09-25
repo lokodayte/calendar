@@ -1,6 +1,6 @@
 # SCSM Calendar
 
-A calendar website for the School of Computer Science & Mathematics. Anyone can see the public front page of upcoming School and club events. SCSM staff and student assistants sign in to see every shared calendar in one place (SchoolCSM Events, Club Events, Social Media and more) and to add private events of their own.
+A calendar website for the School of Computer Science & Mathematics. Anyone can see the public front page of upcoming School and club events. SCSM staff sign in to see every shared calendar in one place (SchoolCSM Events, Club Events, Social Media and more) and to add private events of their own.
 
 - **Staff only.** People sign in with a 6-digit code sent to their work email. There are no passwords.
 - **Remembers each device** for a year. People can sign out of a device at any time, and the admin can sign anyone out.
@@ -244,22 +244,20 @@ Everything is done in the **Admin** tab. Every change is recorded under **Recent
 | **Super admin** | Set in `wrangler.toml` (`SUPERADMIN_EMAILS`) | Everything. Can't be removed, demoted or signed out by anyone from the website. |
 | **Admin** | Made in **Admin → People** | Everything a super admin can, including making other admins, but can't change super admins. |
 | **Staff** | Added in **Admin → People** | See all calendars and add private events. |
-| **Student assistant** | Added in **Admin → People** | Same as staff, but can't see calendars marked "Staff only". Can have an **access until** date (e.g. end of semester). |
 | **Anyone else** | — | Sees the public front page only. If they try to sign in they're told right away that it's for SCSM staff, and no email is sent. |
 
 ### Common tasks
 
 | Task | How |
 |---|---|
-| Give someone access | **People**: paste their email, choose **Staff** or **Student assistant**, click **Add people**. |
+| Give someone access | **People**: paste their email, choose **Staff** or **Admin**, click **Add people**. |
 | Add many people | Paste the whole list: one per line, comma-separated, copied from a spreadsheet, or "Name &lt;email&gt;" — names are kept. |
 | Make someone an admin | **People**: change their role to **Admin**. It takes effect on their next click. |
-| Student assistants for a semester | Add them as **Student assistant** with an **access until** date. After that day they can't sign in. |
 | Remove someone | Click **Remove** next to them. They're signed out everywhere immediately. |
 | Someone lost a phone | Click **Devices** next to them, then **Sign out** on that device. |
 | Add a calendar | **Shared calendars → + Add**, paste the ICS link, then **Test link**. |
 | Show a calendar on the public front page | Edit it and set **Who can see it** to **Public**. |
-| Hide a calendar from student assistants | Set **Who can see it** to **Staff only**. |
+| Keep a calendar for signed-in staff only | Set **Who can see it** to **Staff only** (the default for new calendars). |
 | Change the order in the sidebar | Use the ▲ ▼ arrows. |
 | Change the site title or front-page text | **Settings**. |
 | Add another super admin | Edit `SUPERADMIN_EMAILS` in `wrangler.toml` on GitHub. It's live after the automatic deploy. |
@@ -310,7 +308,7 @@ Rough numbers, assuming each person opens the site about 3 times a workday. Chec
   - Sessions last 365 days, or 12 hours if "Keep me signed in" is unticked.
   - Removing a person, or revoking their devices, takes effect on their next click.
 - **Every helper request checks the session and the person's current role.** Admin requests need the Admin or Super admin role. Super admins (`SUPERADMIN_EMAILS`) can't be changed from the website at all.
-- **Calendar visibility is enforced on the server.** Student assistants can't load "Staff only" calendars, and signed-out visitors can only load calendars marked "Public".
+- **Calendar visibility is enforced on the server.** Signed-out visitors can only load calendars marked "Public"; everything else needs a sign-in.
 - **Private data is scoped on the server.** Personal events, choices and calendar links are always looked up by the signed-in person's email, so one person can never read or change another's. There are tests for this.
 - **Shared ICS links never reach the browser.**
 - **CORS allows only your website address**, from `ALLOWED_ORIGINS` in `wrangler.toml`.
@@ -346,4 +344,4 @@ Rough numbers, assuming each person opens the site about 3 times a workday. Chec
   - Signed-in person: `GET /api/bootstrap`, `PUT /api/prefs`, `GET /api/feeds/shared/:id`, `GET /api/feeds/mine/:id`, `/api/my-agenda[/:id]` (personal events), `/api/my-feeds[/:id]`.
   - Admin: `/api/admin/*`.
   - Access rules are listed in one table in `worker/src/index.js`.
-- **Times:** personal events and "access until" dates are in **America/New_York**. The calendar grid shows times in the viewer's own time zone.
+- **Times:** personal events are in **America/New_York**. The calendar grid shows times in the viewer's own time zone.

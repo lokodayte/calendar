@@ -257,10 +257,12 @@ const isPhone = () => window.matchMedia("(max-width: 800px)").matches;
 function buildCalendar() {
   const phone = isPhone();
   S.fc = new FullCalendar.Calendar($("#calendar"), {
-    initialView: phone ? "listWeek" : "dayGridMonth",
+    // "List" = 7 days starting today; the arrows step back or forward a week at a time.
+    views: { listNext7: { type: "list", duration: { days: 7 }, buttonText: "List" } },
+    initialView: phone ? "listNext7" : "dayGridMonth",
     headerToolbar: phone
-      ? { left: "prev,next today", center: "", right: "listWeek,dayGridMonth" }
-      : { left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,listWeek" },
+      ? { left: "prev,next today", center: "", right: "listNext7,dayGridMonth" }
+      : { left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,listNext7" },
     footerToolbar: phone ? { center: "title" } : false,
     buttonText: { today: "Today", month: "Month", week: "Week", list: "List" },
     height: "auto",
