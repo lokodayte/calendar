@@ -553,3 +553,32 @@ describe("CORS", () => {
     assert.equal((await call("GET", "/", { origin: "http://localhost:5500" })).status, 200);
   });
 });
+
+describe("housekeeping", () => {
+  test("big feeds are cached as plain text and old gzip rows still read back", async () => {
+    const url = "https://outlook.office365.com/owa/calendar/big/calendar.ics";
+    let body = "BEGIN:VCALENDAR\r\n";
+    for (let i = 0; i < 4000; i++) body += `BEGIN:VEVENT\r\nUID:${i}\r\nDTSTART:20261001T160000Z\r\nDTEND:20261001T170000Z\r\nSUMMARY:Shift ${i}\r\nEND:VEVENT\r\n`;
+    body += "END:VCALENDAR\r\n";
+    feeds.set(url, body);
+    const admin = await signIn(ADMIN);
+    const id = (await call("POST", "/api/admin/calendars", { token: admin, body: { name: "Big", color: "#111111", url } })).data.calendar.id;
+    const first = await call("GET", `/api/feeds/shared/${id}`, { token: admin });
+    assert.equal(first.text, body);
+    const [row] = env.DB.q("SELECT body FROM feed_cache WHERE key = ?", `shared:${id}`);
+    assert.ok(row.body.startsWith("raw:"));
+    // A row saved by the previous version (bare base64 gzip) is still understood.
+    const gz = new Uint8Array(await new Response(new Blob([body]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
+    let s = ""; for (const b of gz) s += String.fromCharCode(b);
+    env.DB.q("UPDATE feed_cache SET body = ? WHERE key = ?", btoa(s), `shared:${id}`);
+    const again = await call("GET", `/api/feeds/shared/${id}`, { token: admin });
+    assert.equal(again.text, body);
+  });
+
+  test("signing in clears out expired sessions", async () => {
+    await signIn(A, "Old laptop");
+    env.DB.q("UPDATE sessions SET expires_at = 1");
+    await signIn(B);
+    assert.deepEqual(env.DB.q("SELECT email FROM sessions").map((r) => r.email), [B]);
+  });
+});

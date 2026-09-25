@@ -49,7 +49,7 @@ $("#formEmail").addEventListener("submit", async (e) => {
     try {
       const r = await api("/api/auth/request", { method: "POST", body: { email } });
       pendingEmail = email;
-      $("#codeMsg").textContent = `${r.message} It works for 10 minutes.`;
+      $("#codeMsg").textContent = `${r.message} It works for 10 minutes. You can ask for up to 3 codes an hour, so if one is slow, wait for it rather than asking again.`;
       $("#inCode").value = "";
       setErr($("#errCode"));
       $("#formEmail").hidden = true;

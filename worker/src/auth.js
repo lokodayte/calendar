@@ -88,6 +88,10 @@ export async function verifyCode(req, env) {
       .bind(await sessionId(env, token), email, device, now, now, expires),
     env.DB.prepare("INSERT OR IGNORE INTO staff (email, added_at, added_by) VALUES (?, ?, 'admin list')").bind(email, now),
     env.DB.prepare("UPDATE staff SET last_sign_in = ? WHERE email = ?").bind(now, email),
+    // Housekeeping, done on sign-in (rare) rather than on every request.
+    env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(now),
+    env.DB.prepare("DELETE FROM login_codes WHERE code_hash = '' AND window_start < ?").bind(now - 864e5),
+    env.DB.prepare("DELETE FROM admin_log WHERE at < ?").bind(now - 2 * 365 * 864e5),
   ]);
   return json({ ok: true, token, email, isAdmin: isAdminEmail(env, email), expires });
 }

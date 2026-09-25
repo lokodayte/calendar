@@ -6,7 +6,7 @@ import { LIMITS, devMode } from "./settings.js";
 import { sampleIcs } from "./dev/samples.js";
 
 const MAX_FEED_BYTES = 8 * 1024 * 1024;
-const MAX_CACHED_BYTES = 1_800_000;
+const MAX_CACHED_BYTES = 1_800_000;  // D1 rows are limited to 2 MB
 
 /** Guess where a link comes from, from its address. */
 export function detectSource(url) {
@@ -24,6 +24,20 @@ async function gzip(text) {
 async function gunzip(bytes) {
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
   return new Response(stream).text();
+}
+
+// The free plan allows ~10 ms of CPU per request, and gzip of a big Outlook feed costs about that much.
+// So feeds are stored as plain text ("raw:") whenever they fit in a D1 row — reading them back is then
+// nearly free — and only very large ones are gzipped ("gz:"). Rows from before this held bare base64 gzip.
+async function packBody(text) {
+  const fits = text.length * 3 <= MAX_CACHED_BYTES || new TextEncoder().encode(text).length <= MAX_CACHED_BYTES;
+  if (fits) return "raw:" + text;
+  const b64 = toBase64(await gzip(text));
+  return b64.length <= MAX_CACHED_BYTES ? "gz:" + b64 : null;
+}
+async function unpackBody(body) {
+  if (body.startsWith("raw:")) return body.slice(4);
+  return gunzip(fromBase64(body.startsWith("gz:") ? body.slice(3) : body));
 }
 
 /** Pauses before retrying a busy calendar server (tests set these to 0). */
@@ -85,7 +99,7 @@ export async function getFeed(env, ctx, key, url) {
 
   if (cached && now - cached.checked_at < LIMITS.CACHE_MINUTES * 60e3) {
     const stale = !!cached.last_error;
-    return { text: await gunzip(fromBase64(cached.body)), stale, fetchedAt: cached.fetched_at, error: cached.last_error || null };
+    return { text: await unpackBody(cached.body), stale, fetchedAt: cached.fetched_at, error: cached.last_error || null };
   }
   if (sameUrl && !row.body && row.last_error && now - row.checked_at < LIMITS.RETRY_AFTER_ERROR_MIN * 60e3) {
     throw new Error(row.last_error);
@@ -94,8 +108,7 @@ export async function getFeed(env, ctx, key, url) {
   const save = (p) => (ctx && ctx.waitUntil ? ctx.waitUntil(p) : p);
   try {
     const text = await downloadIcs(env, url);
-    const zipped = await gzip(text);
-    const body = zipped.length <= MAX_CACHED_BYTES ? toBase64(zipped) : null;
+    const body = await packBody(text);
     await save(env.DB.prepare(
       `INSERT INTO feed_cache (key, url_hash, body, fetched_at, checked_at, last_error) VALUES (?, ?, ?, ?, ?, NULL)
        ON CONFLICT(key) DO UPDATE SET url_hash = excluded.url_hash, body = excluded.body, fetched_at = excluded.fetched_at,
@@ -112,7 +125,7 @@ export async function getFeed(env, ctx, key, url) {
          fetched_at = CASE WHEN feed_cache.url_hash = excluded.url_hash THEN feed_cache.fetched_at ELSE 0 END,
          url_hash = excluded.url_hash`,
     ).bind(key, urlHash, now, message).run());
-    if (cached) return { text: await gunzip(fromBase64(cached.body)), stale: true, fetchedAt: cached.fetched_at, error: message };
+    if (cached) return { text: await unpackBody(cached.body), stale: true, fetchedAt: cached.fetched_at, error: message };
     throw new Error(message);
   }
 }
@@ -125,7 +138,8 @@ export function dropCache(env, key) {
 export function feedResponse(result) {
   return new Response(result.text, {
     headers: {
-      "content-type": "text/calendar; charset=utf-8",
+      // text/plain so Cloudflare's edge compresses it on the way out (costs the Worker no CPU).
+      "content-type": "text/plain; charset=utf-8",
       "cache-control": "private, no-store",
       "x-feed-status": result.stale ? "stale" : "fresh",
       "x-feed-fetched-at": String(result.fetchedAt || 0),
