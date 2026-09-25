@@ -12,9 +12,10 @@
   --line: #ECE5DA;
   --line-2: #E2D9CC;
 
-  --accent: #E0475B;
-  --accent-hover: #C93A4E;
-  --accent-soft: #FDECEE;
+  /* Marist red, from the logo */
+  --accent: #C8102E;
+  --accent-hover: #A50D26;
+  --accent-soft: #FBE8EB;
   --accent-ink: #FFFFFF;
   --plum: #5B4FB3;
   --plum-soft: #EFECFB;
@@ -46,9 +47,9 @@ body {
 .glow {
   position: fixed; inset: 0 0 auto 0; height: 520px; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(600px 320px at 8% -8%, rgba(255, 190, 170, .55), transparent 70%),
-    radial-gradient(560px 300px at 92% -6%, rgba(206, 196, 255, .55), transparent 70%),
-    radial-gradient(520px 260px at 50% 0%, rgba(255, 233, 196, .45), transparent 70%);
+    radial-gradient(640px 320px at 10% 0%, rgba(200, 16, 46, .07), transparent 70%),
+    radial-gradient(560px 300px at 90% 0%, rgba(206, 196, 255, .35), transparent 70%),
+    radial-gradient(520px 260px at 50% 10%, rgba(255, 233, 196, .45), transparent 70%);
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -67,7 +68,7 @@ a { color: var(--plum); }
 }
 .btn:hover { border-color: var(--ink-3); }
 .btn:active { transform: translateY(1px); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 16px -6px rgba(224, 71, 91, .6); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 16px -6px rgba(200, 16, 46, .55); }
 .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .btn.danger { color: var(--danger); }
 .btn.danger:hover { border-color: var(--danger); background: var(--danger-bg); }
@@ -107,19 +108,15 @@ input.code { font: 600 28px var(--body); letter-spacing: .45em; text-align: cent
 .spinner { width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid var(--line-2); border-top-color: var(--accent); animation: spin .8s linear infinite; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.brand-name { font: 600 20px/1 var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.01em; }
-.brand.small .brand-name { font-size: 17px; }
-.mark {
-  width: 30px; height: 30px; border-radius: 9px; flex: none; position: relative;
-  background: linear-gradient(135deg, #F2706A, #C7364A); box-shadow: 0 4px 10px -3px rgba(199, 54, 74, .55);
-}
-.mark::after { content: ""; position: absolute; left: 7px; right: 7px; top: 12px; bottom: 7px; background: #fff; border-radius: 3px; }
-.mark::before { content: ""; position: absolute; left: 9px; right: 9px; top: 5px; height: 5px; border-left: 2.5px solid rgba(255,255,255,.9); border-right: 2.5px solid rgba(255,255,255,.9); }
+/* Official Marist | SCSM logos. The horizontal lockup has a white background, so it only sits on white bars. */
+.lockup { display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; line-height: 0; border-radius: 4px; }
+.lockup img { display: block; height: 44px; width: auto; max-width: 100%; }
+.signin-logo { display: block; width: auto; height: 118px; margin: 2px auto 8px; }
 
 /* ---------- public front page ---------- */
 .public { max-width: 1120px; margin: 0 auto; padding: 0 20px 40px; }
-.pub-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 0; }
+.pub-bar { background: #fff; border-bottom: 1px solid var(--line); box-shadow: 0 1px 0 rgba(34, 30, 51, .02); }
+.pub-top { max-width: 1120px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; }
 .pub-top .btn { white-space: nowrap; flex: none; }
 .hero { padding: 36px 0 26px; max-width: 720px; }
 .eyebrow { margin: 0 0 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--accent-hover); background: rgba(255,255,255,.7); border: 1px solid var(--line); padding: 6px 12px; border-radius: 999px; }
@@ -164,15 +161,17 @@ input.code { font: 600 28px var(--body); letter-spacing: .45em; text-align: cent
 .topbar {
   position: sticky; top: 0; z-index: 20; height: var(--top-h);
   display: flex; align-items: center; gap: 16px; padding: 0 20px;
-  background: rgba(250, 247, 242, .82); backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px);
+  background: rgba(255, 255, 255, .96); backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px);
   border-bottom: 1px solid var(--line);
 }
+.topbar .lockup img.lockup-wide { height: 36px; }
+.topbar .lockup img.lockup-shield { display: none; height: 32px; }
 .tabs { display: flex; gap: 4px; margin-left: auto; background: var(--sunk); padding: 4px; border-radius: 12px; }
 .tabs button { border: 0; background: none; padding: 8px 16px; border-radius: 9px; font-weight: 600; font-size: 14.5px; color: var(--ink-2); }
 .tabs button:hover { color: var(--ink); }
 .tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
 .menu-wrap { position: relative; }
-.avatar { width: 38px; height: 38px; border-radius: 50%; border: 0; background: linear-gradient(135deg, #7C6FD6, #5B4FB3); color: #fff; font: 700 15px var(--body); box-shadow: var(--shadow-sm); }
+.avatar { width: 38px; height: 38px; border-radius: 50%; border: 0; background: var(--ink); color: #fff; font: 700 15px var(--body); box-shadow: var(--shadow-sm); }
 .menu { position: absolute; right: 0; top: 48px; width: 280px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 10px; }
 .menu-name { margin: 0; font-weight: 700; }
 .menu-name:empty { display: none; }
@@ -273,7 +272,6 @@ dialog::backdrop { background: rgba(34, 30, 51, .38); backdrop-filter: blur(3px)
 .dlg form { display: flex; flex-direction: column; gap: 12px; }
 .dlg h2 { font-size: 25px; line-height: 1.2; margin: 0 0 2px; padding-right: 30px; overflow-wrap: anywhere; }
 .signin-dlg { width: min(440px, calc(100vw - 24px)); }
-.signin-dlg .brand { margin-bottom: 6px; }
 .x { position: absolute; top: 14px; right: 14px; border: 0; background: var(--sunk); width: 34px; height: 34px; border-radius: 50%; font-size: 21px; line-height: 1; color: var(--ink-2); display: grid; place-items: center; }
 .x:hover { background: var(--sunk-2); color: var(--ink); }
 .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap; }
@@ -353,8 +351,8 @@ dialog::backdrop { background: rgba(34, 30, 51, .38); backdrop-filter: blur(3px)
   .only-phone { display: inline-grid; }
   .sidebar-head.only-phone { display: flex; justify-content: space-between; align-items: center; }
   .topbar { gap: 8px; padding: 0 10px; }
-  .topbar .brand-name { font-size: 18px; }
-  .topbar .mark { display: none; }
+  .topbar .lockup img.lockup-wide { display: none; }
+  .topbar .lockup img.lockup-shield { display: block; }
   .tabs button { padding: 7px 11px; font-size: 14px; }
   .view { padding: 14px 12px 32px; }
   .view-calendar { display: block; }
@@ -379,11 +377,12 @@ dialog::backdrop { background: rgba(34, 30, 51, .38); backdrop-filter: blur(3px)
   .hero { padding: 18px 0 14px; }
   .upcoming { grid-template-columns: 1fr; }
   .public { padding: 0 14px 32px; }
-  .pub-top .brand-name { font-size: 18px; }
+  .pub-top { padding: 10px 14px; gap: 10px; }
+  .pub-top .lockup img { height: 30px; }
   .pub-top .btn { padding: 8px 13px; font-size: 14px; }
+  .signin-logo { height: 96px; }
 }
 @media (max-width: 440px) {
-  .topbar .brand { display: none; }
   .tabs { margin-left: 0; flex: 1; justify-content: space-between; }
   .tabs button { flex: 1; padding: 7px 6px; }
 }

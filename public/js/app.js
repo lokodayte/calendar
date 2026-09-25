@@ -598,7 +598,6 @@ async function reload() {
     toast(`Couldn't load your own events right now (${err.message}). Shared calendars still work.`);
   }
   document.title = S.site.title;
-  $("#siteTitle").textContent = S.site.title;
   $("#tabAdmin").hidden = !S.me.isAdmin;
   $("#devBanner").hidden = !S.site.devMode;
   const first = (S.me.name || "").split(" ")[0] || S.me.email.split(/[@._]/)[0];

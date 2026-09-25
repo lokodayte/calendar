@@ -679,3 +679,11 @@ describe("public front page", () => {
     assert.equal((await call("GET", `/api/public/feeds/${priv.id}`)).status, 404);
   });
 });
+
+describe("emails", () => {
+  test("code emails carry the official logo from the website", async () => {
+    await call("POST", "/api/auth/request", { body: { email: A } });
+    assert.match(outbox[0].html, /<img src="https:\/\/scsm\.web\.app\/img\/marist-scsm-lockup\.png"/);
+    assert.match(outbox[0].html, /alt="Marist University — School of Computer Science and Mathematics"/);
+  });
+});

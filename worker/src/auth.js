@@ -54,7 +54,7 @@ export async function requestCode(req, env) {
   ).bind(email, await codeHash(env, email, code), now + LIMITS.CODE_MINUTES * 60e3, windowStart, windowCount).run();
 
   const settings = await getSettings(env);
-  const sent = await sendEmail(env, settings.sender_name, { to: email, ...codeEmail(settings.site_title, code) });
+  const sent = await sendEmail(env, settings.sender_name, { to: email, ...codeEmail(settings.site_title, code, env.SITE_URL) });
   if (!sent) fail(502, "We couldn't send the code email right now. Please try again in a few minutes. If it keeps happening, tell an SCSM admin.");
   return json({ ok: true, message: `We emailed a 6-digit code to ${email}. Check your inbox (and junk folder).` });
 }

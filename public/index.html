@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#FAF7F2">
+  <meta name="theme-color" content="#FFFFFF">
   <title>SCSM Calendar</title>
   <meta name="description" content="Club meetings, labs and school events at the School of Computer Science & Mathematics.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23F2706A'/%3E%3Cstop offset='1' stop-color='%23C7364A'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='2' y='3' width='28' height='27' rx='8' fill='url(%23g)'/%3E%3Crect x='8' y='13' width='16' height='11' rx='2.5' fill='%23fff'/%3E%3Crect x='10' y='1.5' width='2.6' height='6' rx='1.3' fill='%23221E33'/%3E%3Crect x='19.4' y='1.5' width='2.6' height='6' rx='1.3' fill='%23221E33'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/png" href="img/marist-shield.png">
+  <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
@@ -19,15 +20,20 @@
   <div id="boot" class="boot" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span id="bootText">Loading…</span></div>
 
   <!-- ============ Public front page (no sign-in) ============ -->
-  <div id="public" class="public" hidden>
-    <header class="pub-top">
-      <div class="brand"><span class="mark" aria-hidden="true"></span><span class="brand-name" id="pubBrand">SCSM Calendar</span></div>
-      <button class="btn primary" type="button" id="btnStaffSignIn">Staff sign in</button>
+  <div id="public" hidden>
+    <header class="pub-bar">
+      <div class="pub-top">
+        <a class="lockup" href="https://www.marist.edu/computer-science-math" target="_blank" rel="noopener noreferrer">
+          <img src="img/marist-scsm-lockup.png" alt="Marist University — School of Computer Science and Mathematics" width="360" height="45">
+        </a>
+        <button class="btn primary" type="button" id="btnStaffSignIn">Staff sign in</button>
+      </div>
     </header>
+  <div class="public">
 
     <section class="hero">
       <p class="eyebrow" id="pubToday"></p>
-      <h1 id="pubTitle">SCSM Events</h1>
+      <h1>Calendar of Events</h1>
       <p class="hero-sub" id="pubTagline"></p>
     </section>
 
@@ -48,6 +54,7 @@
       <p>SCSM staff: <button class="link" type="button" id="btnStaffSignIn2">sign in</button> for the full calendar.</p>
     </footer>
   </div>
+  </div>
 
   <!-- ============ App (signed in) ============ -->
   <div id="app" class="app" hidden>
@@ -55,7 +62,10 @@
       <button class="icon-btn only-phone" id="btnDrawer" type="button" aria-label="Show calendars" aria-controls="sidebar" aria-expanded="false">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
-      <div class="brand"><span class="mark" aria-hidden="true"></span><span class="brand-name" id="siteTitle">SCSM Calendar</span></div>
+      <a class="lockup" href="#calendar" aria-label="Marist University — School of Computer Science and Mathematics — Calendar">
+        <img class="lockup-wide" src="img/marist-scsm-lockup.png" alt="" width="288" height="36">
+        <img class="lockup-shield" src="img/marist-shield.png" alt="" width="25" height="32">
+      </a>
       <nav class="tabs" role="tablist" aria-label="Views">
         <button role="tab" type="button" data-tab="calendar" aria-selected="true">Calendar</button>
         <button role="tab" type="button" data-tab="admin" aria-selected="false" hidden id="tabAdmin">Admin</button>
@@ -116,7 +126,7 @@
   <dialog id="dlgSignin" aria-labelledby="signinHeading" class="signin-dlg">
     <div class="dlg">
       <button class="x" type="button" data-close aria-label="Close">×</button>
-      <div class="brand small"><span class="mark" aria-hidden="true"></span><span class="brand-name" id="signinTitle">SCSM Calendar</span></div>
+      <img class="signin-logo" src="img/marist-scsm-stacked.png" alt="Marist University — School of Computer Science and Mathematics" width="128" height="118">
 
       <form id="formEmail" novalidate>
         <h2 id="signinHeading">Staff sign in</h2>

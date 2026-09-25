@@ -131,8 +131,6 @@ export function initPublic({ openEvent }) {
           $("#pubUpcoming").replaceChildren(h("div", { class: "notice error", style: { "grid-column": "1 / -1" } }, h("span", { text: err.message })));
           return;
         }
-        $("#pubTitle").textContent = info.site.title;
-        $("#pubBrand").textContent = info.site.title;
         $("#pubTagline").textContent = info.site.tagline;
         document.title = info.site.title;
         renderChips();

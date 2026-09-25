@@ -76,16 +76,23 @@ async function noteEmailStatus(env, error) {
 export const pauseBetweenEmails = (env) =>
   emailProvider(env) === "emailjs" && !devMode(env) ? new Promise((r) => setTimeout(r, 1100)) : Promise.resolve();
 
-const wrap = (inner) => `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#18223a;max-width:480px">${inner}</div>`;
+/** Email body with the official Marist | SCSM logo on top (served by the website; mail apps may ask before showing images). */
+const wrap = (inner, siteUrl) => {
+  const base = /^https:\/\//.test(siteUrl || "") ? siteUrl.replace(/\/+$/, "") : "";
+  const logo = base
+    ? `<img src="${esc(base)}/img/marist-scsm-lockup.png" width="288" height="36" alt="Marist University — School of Computer Science and Mathematics" style="display:block;border:0;width:288px;height:36px;margin:0 0 22px">`
+    : "";
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#18223a;max-width:480px">${logo}${inner}</div>`;
+};
 
-export function codeEmail(siteTitle, code) {
+export function codeEmail(siteTitle, code, siteUrl) {
   return {
     subject: `${code} is your ${siteTitle} code`,
     text: `Your ${siteTitle} sign-in code is ${code}\n\nIt works for ${LIMITS.CODE_MINUTES} minutes. After you enter it, this device stays signed in.\n\nIf you didn't ask for this, you can ignore this email.`,
     html: wrap(`<p>Your ${esc(siteTitle)} sign-in code is:</p>
       <p style="font-size:30px;font-weight:bold;letter-spacing:6px;margin:8px 0">${code}</p>
       <p>It works for ${LIMITS.CODE_MINUTES} minutes. After you enter it, this device stays signed in.</p>
-      <p style="color:#7b8499;font-size:13px">If you didn't ask for this, you can ignore this email.</p>`),
+      <p style="color:#7b8499;font-size:13px">If you didn't ask for this, you can ignore this email.</p>`, siteUrl),
   };
 }
 
@@ -95,8 +102,8 @@ export function welcomeEmail(siteTitle, siteUrl) {
     subject: `You've been added to ${siteTitle}`,
     text: `Hi,\n\nYou now have access to ${siteTitle}, the shared calendar for SCSM staff.\n\n${link ? `Open it here: ${link}\n\n` : ""}There's no password. Enter your work email and we'll send you a 6-digit code. After that, your device stays signed in.\n\nPlease don't choose to stay signed in on shared or public computers.`,
     html: wrap(`<p>Hi,</p><p>You now have access to <b>${esc(siteTitle)}</b>, the shared calendar for SCSM staff.</p>
-      ${link ? `<p><a href="${esc(link)}" style="display:inline-block;background:#2f5bd3;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Open ${esc(siteTitle)}</a></p>` : ""}
+      ${link ? `<p><a href="${esc(link)}" style="display:inline-block;background:#C8102E;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Open ${esc(siteTitle)}</a></p>` : ""}
       <p>There's no password. Enter your work email and we'll send you a 6-digit code. After that, your device stays signed in.</p>
-      <p style="color:#7b8499;font-size:13px">Please don't stay signed in on shared or public computers.</p>`),
+      <p style="color:#7b8499;font-size:13px">Please don't stay signed in on shared or public computers.</p>`, siteUrl),
   };
 }
