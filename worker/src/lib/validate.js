@@ -9,6 +9,20 @@ export function emailsFromText(text) {
   return [...new Set(found.map(normEmail))];
 }
 
+/** Pasted list → [{email, name}]. Understands "Name <a@b.edu>", "a@b.edu, c@d.edu", spreadsheet columns. */
+export function peopleFromText(text) {
+  const out = new Map();
+  for (const part of String(text || "").split(/[\n;,]+/)) {
+    const m = part.match(/[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[a-z]{2,}/i);
+    if (!m) continue;
+    const email = normEmail(m[0]);
+    if (!isEmail(email) || out.has(email)) continue;
+    const name = part.replace(m[0], "").replace(/[<>()"\t]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+    out.set(email, { email, name });
+  }
+  return [...out.values()];
+}
+
 /** A trimmed string with a length limit. Control characters are removed (newlines kept if multiline). */
 export function text(v, field, max, { required = false, multiline = false } = {}) {
   if (v == null) v = "";

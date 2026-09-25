@@ -18,7 +18,7 @@ let env, outbox, feeds, feedHits, realFetch, emailFails;
 beforeEach(() => {
   env = {
     DB: new FakeD1(),
-    ADMIN_EMAILS: ADMIN,
+    SUPERADMIN_EMAILS: ADMIN,
     SESSION_SECRET: "test-secret-test-secret-test-secret-1234",
     ALLOWED_ORIGINS: SITE,
     EMAILJS_SERVICE_ID: "service_test",
@@ -94,11 +94,13 @@ const event = (over = {}) => ({ title: "Dentist", date: "2026-10-01", startTime:
 /* ------------------------------------------------------------------ */
 
 describe("sign-in with an email code", () => {
-  test("the answer is identical for staff and unknown emails, and only staff get a code", async () => {
+  test("only people on the list get a code; anyone else is refused at once and no email is sent", async () => {
     const staff = await call("POST", "/api/auth/request", { body: { email: A } });
+    assert.equal(staff.status, 200);
+    assert.match(staff.data.message, /We emailed a 6-digit code/);
     const stranger = await call("POST", "/api/auth/request", { body: { email: "nobody@example.com" } });
-    assert.equal(staff.status, stranger.status);
-    assert.deepEqual(staff.data, stranger.data);
+    assert.equal(stranger.status, 403);
+    assert.match(stranger.data.error, /Only SCSM staff members can sign in/);
     assert.deepEqual(outbox.map((m) => m.to), [A]);
   });
 
@@ -162,11 +164,12 @@ describe("sign-in with an email code", () => {
     assert.match(r.data.error, /expired/);
   });
 
-  test("at most 3 codes per email per hour (the 4th request looks the same but sends nothing)", async () => {
-    const answers = [];
-    for (let i = 0; i < 4; i++) answers.push((await call("POST", "/api/auth/request", { body: { email: A } })).data);
+  test("at most 3 codes per email per hour, and the 4th request says so", async () => {
+    for (let i = 0; i < 3; i++) assert.equal((await call("POST", "/api/auth/request", { body: { email: A } })).status, 200);
+    const fourth = await call("POST", "/api/auth/request", { body: { email: A } });
+    assert.equal(fourth.status, 429);
+    assert.match(fourth.data.error, /3 codes in the last hour.*try again in \d+ minutes?/);
     assert.equal(outbox.length, 3);
-    assert.deepEqual(answers[3], answers[0]);
     // An hour later it works again.
     env.DB.q("UPDATE login_codes SET window_start = ? WHERE email = ?", Date.now() - 3601e3, A);
     await call("POST", "/api/auth/request", { body: { email: A } });
@@ -371,7 +374,7 @@ describe("personal events are private", () => {
 describe("admin-only endpoints", () => {
   const adminRoutes = [
     ["GET", "/api/admin/staff"], ["POST", "/api/admin/staff", { emails: "x@marist.edu" }],
-    ["DELETE", `/api/admin/staff/${encodeURIComponent(B)}`], ["GET", `/api/admin/staff/${encodeURIComponent(B)}/sessions`],
+    ["DELETE", `/api/admin/staff/${encodeURIComponent(B)}`], ["PUT", `/api/admin/staff/${encodeURIComponent(B)}`, { role: "admin" }], ["GET", `/api/admin/staff/${encodeURIComponent(B)}/sessions`],
     ["DELETE", `/api/admin/staff/${encodeURIComponent(B)}/sessions`], ["DELETE", "/api/admin/sessions/abc"],
     ["GET", "/api/admin/calendars"], ["POST", "/api/admin/calendars", { name: "X", color: "#123456", url: "https://example.com/a.ics" }],
     ["PUT", "/api/admin/calendars/1", { name: "X" }], ["DELETE", "/api/admin/calendars/1"], ["POST", "/api/admin/calendars/order", { ids: [1] }],
@@ -424,9 +427,11 @@ describe("admin-only endpoints", () => {
     assert.match(log.data.log[0].detail, /Added 2 staff/);
   });
 
-  test("admins can't be removed through the staff list", async () => {
+  test("super admins can't be removed or changed from the website", async () => {
     const admin = await signIn(ADMIN);
-    assert.equal((await call("DELETE", `/api/admin/staff/${encodeURIComponent(ADMIN)}`, { token: admin })).status, 400);
+    const e = encodeURIComponent(ADMIN);
+    assert.equal((await call("DELETE", `/api/admin/staff/${e}`, { token: admin })).status, 403);
+    assert.equal((await call("PUT", `/api/admin/staff/${e}`, { token: admin, body: { role: "staff" } })).status, 403);
   });
 
   test("test link reports the number of events and titles, or the error", async () => {
@@ -505,11 +510,12 @@ describe("email", () => {
     assert.match(outbox[0].subject, /^\d{6} is your SCSM Calendar code$/);
   });
 
-  test("failures are shown to the admin, look the same to the person signing in, and clear after a success", async () => {
+  test("if the email can't be sent, the person is told and the admin sees why; a success clears it", async () => {
     const admin = await signIn(ADMIN);
     emailFails = true;
     const r = await call("POST", "/api/auth/request", { body: { email: A } });
-    assert.equal(r.status, 200);
+    assert.equal(r.status, 502);
+    assert.match(r.data.error, /couldn't send the code email/);
     let s = (await call("GET", "/api/admin/settings", { token: admin })).data;
     assert.equal(s.emailProvider, "emailjs");
     assert.match(s.emailStatus.error, /monthly limit/);
@@ -526,10 +532,10 @@ describe("email", () => {
     assert.equal(outbox[0].via, "brevo");
   });
 
-  test("with no email service set up, the reply is still the same and the admin can see why", async () => {
+  test("with no email service set up, sign-in says so and the admin can see why", async () => {
     delete env.EMAILJS_PRIVATE_KEY;
     const r = await call("POST", "/api/auth/request", { body: { email: A } });
-    assert.equal(r.status, 200);
+    assert.equal(r.status, 502);
     assert.equal(outbox.length, 0);
     const [row] = env.DB.q("SELECT value FROM settings WHERE key = 'email_status'");
     assert.match(JSON.parse(row.value).error, /No email service/);
@@ -580,5 +586,104 @@ describe("housekeeping", () => {
     env.DB.q("UPDATE sessions SET expires_at = 1");
     await signIn(B);
     assert.deepEqual(env.DB.q("SELECT email FROM sessions").map((r) => r.email), [B]);
+  });
+});
+
+describe("roles", () => {
+  const C = "carol@marist.edu";
+  const put = (token, email, body) => call("PUT", `/api/admin/staff/${encodeURIComponent(email)}`, { token, body });
+
+  test("a super admin can make someone an admin, who can then do admin work and make other admins", async () => {
+    const boss = await signIn(ADMIN);
+    const a = await signIn(A);
+    assert.equal((await call("GET", "/api/admin/staff", { token: a })).status, 403);
+    assert.equal((await put(boss, A, { role: "admin" })).status, 200);
+    // Takes effect on the same device right away.
+    const boot = (await call("GET", "/api/bootstrap", { token: a })).data;
+    assert.deepEqual([boot.me.role, boot.me.isAdmin, boot.me.isSuper], ["admin", true, false]);
+    assert.equal((await call("GET", "/api/admin/staff", { token: a })).status, 200);
+    assert.equal((await put(a, B, { role: "admin" })).status, 200);
+    const log = (await call("GET", "/api/admin/log", { token: boss })).data.log;
+    assert.match(log[0].detail, /bob@marist.edu: role → Admin/);
+    assert.equal(log[0].actor, A);
+  });
+
+  test("admins can't remove, demote or sign out a super admin", async () => {
+    const boss = await signIn(ADMIN);
+    const a = await signIn(A);
+    await put(boss, A, { role: "admin" });
+    const e = encodeURIComponent(ADMIN);
+    assert.equal((await call("DELETE", `/api/admin/staff/${e}`, { token: a })).status, 403);
+    assert.equal((await put(a, ADMIN, { role: "staff" })).status, 403);
+    assert.equal((await call("DELETE", `/api/admin/staff/${e}/sessions`, { token: a })).status, 403);
+    const sid = (await call("GET", `/api/admin/staff/${e}/sessions`, { token: a })).data.sessions[0].id;
+    assert.equal((await call("DELETE", `/api/admin/sessions/${sid}`, { token: a })).status, 403);
+    assert.equal((await call("GET", "/api/bootstrap", { token: boss })).status, 200);
+    // …but an admin can demote another admin, and it takes effect at once.
+    await put(boss, B, { role: "admin" });
+    const b = await signIn(B);
+    assert.equal((await put(a, B, { role: "staff" })).status, 200);
+    assert.equal((await call("GET", "/api/admin/staff", { token: b })).status, 403);
+  });
+
+  test("pasting people keeps their names and role; super admins in a paste are skipped", async () => {
+    const boss = await signIn(ADMIN);
+    const r = await call("POST", "/api/admin/staff", { token: boss, body: { emails: `Carol Diaz <${C}>\nDan\tdan@marist.edu\n${ADMIN}`, role: "assistant", accessUntil: "2030-05-15" } });
+    assert.deepEqual(r.data.added.sort(), [C, "dan@marist.edu"]);
+    const people = (await call("GET", "/api/admin/staff", { token: boss })).data.staff;
+    const carol = people.find((p) => p.email === C);
+    assert.deepEqual([carol.name, carol.role, carol.roleLabel, carol.accessUntil], ["Carol Diaz", "assistant", "Student assistant", "2030-05-15"]);
+    assert.equal(people.find((p) => p.email === "dan@marist.edu").name, "Dan");
+    assert.equal(people.find((p) => p.email === ADMIN).role, "superadmin");
+    assert.equal((await call("POST", "/api/admin/staff", { token: boss, body: { emails: "x@marist.edu", role: "superadmin" } })).status, 400);
+  });
+
+  test("student assistants don't see staff-only calendars", async () => {
+    feeds.set("https://example.com/a.ics", ICS("For everyone"));
+    feeds.set("https://example.com/s.ics", ICS("Staff meeting"));
+    const boss = await signIn(ADMIN);
+    const everyone = (await call("POST", "/api/admin/calendars", { token: boss, body: { name: "Events", color: "#111111", url: "https://example.com/a.ics" } })).data.calendar;
+    const staffOnly = (await call("POST", "/api/admin/calendars", { token: boss, body: { name: "Staff", color: "#222222", url: "https://example.com/s.ics", audience: "staff" } })).data.calendar;
+    assert.equal(everyone.audience, "everyone");
+    await call("POST", "/api/admin/staff", { token: boss, body: { emails: C, role: "assistant" } });
+    const c = await signIn(C);
+    const boot = (await call("GET", "/api/bootstrap", { token: c })).data;
+    assert.deepEqual(boot.calendars.map((x) => x.name), ["Events"]);
+    assert.equal(boot.me.roleLabel, "Student assistant");
+    assert.equal((await call("GET", `/api/feeds/shared/${staffOnly.id}`, { token: c })).status, 404);
+    assert.equal((await call("GET", `/api/feeds/shared/${everyone.id}`, { token: c })).status, 200);
+    const a = await signIn(A);
+    assert.deepEqual((await call("GET", "/api/bootstrap", { token: a })).data.calendars.map((x) => x.name), ["Events", "Staff"]);
+  });
+
+  test("access ends after the “access until” date", async () => {
+    const boss = await signIn(ADMIN);
+    await call("POST", "/api/admin/staff", { token: boss, body: { emails: C, role: "assistant", accessUntil: "2099-01-01" } });
+    const c = await signIn(C);
+    await put(boss, C, { accessUntil: "2020-01-01" });
+    assert.equal((await call("GET", "/api/bootstrap", { token: c })).status, 401);
+    const r = await call("POST", "/api/auth/request", { body: { email: C } });
+    assert.equal(r.status, 403);
+    assert.match(r.data.error, /access ended on 2020-01-01/);
+  });
+});
+
+describe("public front page", () => {
+  test("anyone can see calendars marked public, without the link, and nothing else", async () => {
+    feeds.set("https://export.calendar.online/ics/x/events.ics", ICS("Hackathon"));
+    feeds.set("https://example.com/private.ics", ICS("Secret meeting"));
+    const boss = await signIn(ADMIN);
+    const pub = (await call("POST", "/api/admin/calendars", { token: boss, body: { name: "Club & School Events", color: "#E0475B", url: "https://export.calendar.online/ics/x/events.ics", audience: "public" } })).data.calendar;
+    const priv = (await call("POST", "/api/admin/calendars", { token: boss, body: { name: "Internal", color: "#111111", url: "https://example.com/private.ics" } })).data.calendar;
+    const info = await call("GET", "/api/public");
+    assert.equal(info.status, 200);
+    assert.deepEqual(info.data.calendars.map((c) => c.name), ["Club & School Events"]);
+    assert.ok(!info.text.includes("calendar.online"));
+    assert.match(info.data.site.tagline, /Computer Science/);
+    assert.match(info.headers.get("cache-control"), /public, max-age=300/);
+    const feed = await call("GET", `/api/public/feeds/${pub.id}`);
+    assert.equal(feed.status, 200);
+    assert.match(feed.text, /Hackathon/);
+    assert.equal((await call("GET", `/api/public/feeds/${priv.id}`)).status, 404);
   });
 });

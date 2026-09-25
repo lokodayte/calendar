@@ -3,4 +3,4 @@
 # allows http://localhost origins, and loads built-in sample calendars.
 DEV_MODE = "true"
 SESSION_SECRET = "local-dev-secret-local-dev-secret-local-dev-secret-0000"
-ADMIN_EMAILS = "boris.sargsyan1@marist.edu"
+SUPERADMIN_EMAILS = "boris.sargsyan1@marist.edu"

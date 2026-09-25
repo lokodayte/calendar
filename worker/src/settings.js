@@ -15,7 +15,11 @@ export const LIMITS = {
   MAX_WELCOME_EMAILS: 20,     // EmailJS's free plan is 200 emails a month
 };
 
-const DEFAULTS = { site_title: "SCSM Calendar", sender_name: "SCSM Calendar" };
+const DEFAULTS = {
+  site_title: "SCSM Calendar",
+  sender_name: "SCSM Calendar",
+  public_tagline: "Club meetings, labs and school events at the School of Computer Science & Mathematics.",
+};
 
 export async function getSettings(env) {
   const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
@@ -27,12 +31,41 @@ export async function getSettings(env) {
   return out;
 }
 
-export function isAdminEmail(env, email) {
-  return String(env.ADMIN_EMAILS || "").split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean).includes(email);
+const emailList = (v) => String(v || "").split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+
+/** Super admins come from wrangler.toml, so nobody can remove or demote them from the website. */
+export function superAdmins(env) {
+  return emailList(env.SUPERADMIN_EMAILS || env.ADMIN_EMAILS);
+}
+export const isSuperAdmin = (env, email) => superAdmins(env).includes(email);
+
+export const ROLES = ["admin", "staff", "assistant"];
+export const ROLE_LABEL = { superadmin: "Super admin", admin: "Admin", staff: "Staff", assistant: "Student assistant" };
+export const AUDIENCES = ["public", "everyone", "staff"];
+
+/** Calendars a signed-in person may see. Student assistants don't see "staff only" calendars. */
+export const visibleAudiences = (user) => (user.role === "assistant" ? ["public", "everyone"] : AUDIENCES);
+
+/** Today's date in Eastern Time, for "access until" checks. */
+export function todayNY() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
-export function adminEmails(env) {
-  return String(env.ADMIN_EMAILS || "").split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+/**
+ * Who is this email? {role, name, accessUntil, expired} or null if they aren't on the list.
+ * Super admins always get role "superadmin".
+ */
+export async function lookupPerson(env, email) {
+  const row = await env.DB.prepare("SELECT role, name, access_until FROM staff WHERE email = ?").bind(email).first();
+  if (isSuperAdmin(env, email)) return { role: "superadmin", name: row?.name || "", accessUntil: null, expired: false };
+  if (!row) return null;
+  return personFromRow(row);
+}
+
+export function personFromRow(row) {
+  const role = ROLES.includes(row.role) ? row.role : "staff";
+  const accessUntil = row.access_until || null;
+  return { role, name: row.name || "", accessUntil, expired: !!accessUntil && accessUntil < todayNY() };
 }
 
 export const devMode = (env) => String(env.DEV_MODE || "").toLowerCase() === "true";

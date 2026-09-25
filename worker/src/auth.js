@@ -3,10 +3,11 @@
 import { fail, json, readJson } from "./lib/http.js";
 import { hmac, randomCode, randomToken, safeEqual } from "./lib/crypto.js";
 import { normEmail, isEmail, text, bool } from "./lib/validate.js";
-import { LIMITS, getSettings, isAdminEmail } from "./settings.js";
+import { LIMITS, getSettings, lookupPerson, personFromRow, isSuperAdmin } from "./settings.js";
 import { sendEmail, codeEmail } from "./email.js";
 
-const GENERIC = "If this email is on the staff list, a code is on its way. Check your inbox (and junk folder).";
+const NOT_ON_LIST = "Only SCSM staff members can sign in. If you should have access, ask an SCSM admin to add your email.";
+const ended = (date) => `Your access ended on ${date}. If you still need it, ask an SCSM admin.`;
 
 function secret(env) {
   const s = env.SESSION_SECRET;
@@ -14,28 +15,36 @@ function secret(env) {
   return s;
 }
 
-async function mayUseSite(env, email) {
-  if (isAdminEmail(env, email)) return true;
-  return !!(await env.DB.prepare("SELECT 1 AS ok FROM staff WHERE email = ?").bind(email).first());
+/** The person, or a 403 explaining why they can't sign in. */
+async function allowedPerson(env, email) {
+  const p = await lookupPerson(env, email);
+  if (!p) fail(403, NOT_ON_LIST);
+  if (p.expired) fail(403, ended(p.accessUntil));
+  return p;
 }
 
 const codeHash = (env, email, code) => hmac(secret(env), `code:${email}:${code}`);
 export const sessionId = (env, token) => hmac(secret(env), `session:${token}`);
 
-/** POST /api/auth/request {email} — same answer whether or not the email is allowed. */
-export async function requestCode(req, env, ctx) {
+/**
+ * POST /api/auth/request {email}
+ * Only people on the list get a code. Everyone else is told so right away, and no email is sent.
+ */
+export async function requestCode(req, env) {
   const body = await readJson(req, 2048);
   const email = normEmail(body.email);
   if (!isEmail(email)) fail(400, "Enter a valid email address.");
   secret(env);
-  const ok = json({ ok: true, message: GENERIC });
-  if (!(await mayUseSite(env, email))) return ok;
+  await allowedPerson(env, email);
 
   const now = Date.now();
   const row = await env.DB.prepare("SELECT window_start, window_count FROM login_codes WHERE email = ?").bind(email).first();
   let windowStart = now, windowCount = 1;
   if (row && now - row.window_start < 3600e3) {
-    if (row.window_count >= LIMITS.MAX_CODES_PER_HOUR) return ok;
+    if (row.window_count >= LIMITS.MAX_CODES_PER_HOUR) {
+      const mins = Math.max(1, Math.ceil((row.window_start + 3600e3 - now) / 60e3));
+      fail(429, `You've asked for ${LIMITS.MAX_CODES_PER_HOUR} codes in the last hour. Use the newest code in your inbox (check junk too), or try again in ${mins} minute${mins === 1 ? "" : "s"}.`);
+    }
     windowStart = row.window_start;
     windowCount = row.window_count + 1;
   }
@@ -47,11 +56,9 @@ export async function requestCode(req, env, ctx) {
   ).bind(email, await codeHash(env, email, code), now + LIMITS.CODE_MINUTES * 60e3, windowStart, windowCount).run();
 
   const settings = await getSettings(env);
-  // Send in the background: the reply is the same (and about as fast) whether or not the email is on the list.
-  const send = sendEmail(env, settings.sender_name, { to: email, ...codeEmail(settings.site_title, code) })
-    .then((sent) => { if (!sent) console.error("Sign-in code email failed for a staff address."); });
-  ctx && ctx.waitUntil ? ctx.waitUntil(send) : await send;
-  return ok;
+  const sent = await sendEmail(env, settings.sender_name, { to: email, ...codeEmail(settings.site_title, code) });
+  if (!sent) fail(502, "We couldn't send the code email right now. Please try again in a few minutes. If it keeps happening, tell an SCSM admin.");
+  return json({ ok: true, message: `We emailed a 6-digit code to ${email}. Check your inbox (and junk folder).` });
 }
 
 /** POST /api/auth/verify {email, code, device} → {token} */
@@ -76,7 +83,8 @@ export async function verifyCode(req, env) {
       : cancel).run();
     fail(400, left > 0 ? `That code isn't right. ${left} ${left === 1 ? "try" : "tries"} left.` : "Too many tries. Request a new code.");
   }
-  if (!(await mayUseSite(env, email))) { await cancel.run(); fail(400, "This email doesn't have access anymore."); }
+  const person = await lookupPerson(env, email);
+  if (!person || person.expired) { await cancel.run(); fail(403, person ? ended(person.accessUntil) : NOT_ON_LIST); }
 
   const token = randomToken();
   // "Keep me signed in" (the default) lasts a year; unticked (shared computers) lasts 12 hours.
@@ -93,31 +101,36 @@ export async function verifyCode(req, env) {
     env.DB.prepare("DELETE FROM login_codes WHERE code_hash = '' AND window_start < ?").bind(now - 864e5),
     env.DB.prepare("DELETE FROM admin_log WHERE at < ?").bind(now - 2 * 365 * 864e5),
   ]);
-  return json({ ok: true, token, email, isAdmin: isAdminEmail(env, email), expires });
+  return json({ ok: true, token, email, role: person.role, expires });
 }
 
-/** Who is making this request? Throws 401 unless the device has a live session and the person is still allowed. */
+/**
+ * Who is making this request? Throws 401 unless the device has a live session and the person is still allowed.
+ * Returns {email, name, role, isSuper, isAdmin, sessionId}. The role is read fresh on every request,
+ * so role changes and removals take effect immediately.
+ */
 export async function authenticate(req, env, ctx) {
   const m = /^Bearer\s+([A-Za-z0-9_-]{20,100})$/.exec(req.headers.get("authorization") || "");
   if (!m) fail(401, "Please sign in.");
   const id = await sessionId(env, m[1]);
   const row = await env.DB.prepare(
-    `SELECT s.email, s.last_seen, s.expires_at, (SELECT 1 FROM staff WHERE email = s.email) AS on_staff
-     FROM sessions s WHERE s.id = ?`,
+    `SELECT s.email, s.last_seen, s.expires_at, p.email AS listed, p.role, p.name, p.access_until
+     FROM sessions s LEFT JOIN staff p ON p.email = s.email WHERE s.id = ?`,
   ).bind(id).first();
   const now = Date.now();
   if (!row || row.expires_at <= now) fail(401, "Your sign-in has expired. Please sign in again.");
-  const isAdmin = isAdminEmail(env, row.email);
-  if (!row.on_staff && !isAdmin) {
+  const isSuper = isSuperAdmin(env, row.email);
+  const person = isSuper ? { role: "superadmin", name: row.name || "" } : row.listed ? personFromRow(row) : null;
+  if (!person || person.expired) {
     await env.DB.prepare("DELETE FROM sessions WHERE email = ?").bind(row.email).run();
-    fail(401, "This email doesn't have access anymore.");
+    fail(401, person ? ended(person.accessUntil) : "This email doesn't have access anymore.");
   }
   // Only record "last seen" about twice a day, to keep database writes low.
   if (now - row.last_seen > 12 * 3600e3) {
     const p = env.DB.prepare("UPDATE sessions SET last_seen = ? WHERE id = ?").bind(now, id).run();
     ctx && ctx.waitUntil ? ctx.waitUntil(p) : await p;
   }
-  return { email: row.email, isAdmin, sessionId: id };
+  return { email: row.email, name: person.name, role: person.role, isSuper, isAdmin: isSuper || person.role === "admin", sessionId: id };
 }
 
 /** POST /api/auth/signout — ends this device's session only. */

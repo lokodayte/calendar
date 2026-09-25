@@ -12,6 +12,9 @@ const routes = [
   ["POST", "/api/auth/verify", "public", verifyCode],
   ["POST", "/api/auth/signout", "user", signOut],
 
+  ["GET", "/api/public", "public", me.publicInfo],
+  ["GET", "/api/public/feeds/:id", "public", me.publicFeed],
+
   ["GET", "/api/bootstrap", "user", me.bootstrap],
   ["PUT", "/api/prefs", "user", me.savePrefs],
   ["GET", "/api/feeds/shared/:id", "user", me.sharedFeed],
@@ -27,6 +30,7 @@ const routes = [
 
   ["GET", "/api/admin/staff", "admin", admin.listStaff],
   ["POST", "/api/admin/staff", "admin", admin.addStaff],
+  ["PUT", "/api/admin/staff/:email", "admin", admin.updatePerson],
   ["DELETE", "/api/admin/staff/:email", "admin", admin.removeStaff],
   ["GET", "/api/admin/staff/:email/sessions", "admin", admin.listSessions],
   ["DELETE", "/api/admin/staff/:email/sessions", "admin", admin.revokeAllSessions],
