@@ -41,8 +41,9 @@ export function initAdmin(root, ctx) {
   const logPanel = h("section", { class: "card panel", id: "admin-log" });
   const jump = (id) => (e) => { e.preventDefault(); document.getElementById(id).scrollIntoView({ behavior: "smooth" }); };
   root.append(
+    h("div", { class: "admin-head" }, h("h1", { text: "Admin" }), h("p", { text: "Manage who can sign in, the shared calendars, desk coverage and site settings." })),
     h("nav", { class: "admin-nav", "aria-label": "Admin sections" },
-      h("a", { href: "#admin", text: "Staff", onclick: jump("admin-staff") }),
+      h("a", { href: "#admin", text: "People", onclick: jump("admin-staff") }),
       h("a", { href: "#admin", text: "Shared calendars", onclick: jump("admin-calendars") }),
       h("a", { href: "#admin", text: "Desk coverage", onclick: jump("admin-coverage") }),
       h("a", { href: "#admin", text: "Settings", onclick: jump("admin-settings") }),
@@ -59,65 +60,131 @@ export function initAdmin(root, ctx) {
 
   /* ================= Staff ================= */
 
+  const ROLE_OPTS = [["staff", "Staff"], ["assistant", "Student assistant"], ["admin", "Admin"]];
+  let roleFilter = "all";
+  const me = () => ctx.state.me;
+
   function renderStaff() {
-    const ta = h("textarea", { rows: 3, placeholder: "name@marist.edu, other@marist.edu…\nYou can paste a whole list, one per line or separated by commas.", "aria-label": "Emails to add" });
+    const ta = h("textarea", { rows: 3, placeholder: "Paste emails — one per line, or separated by commas.\nNames work too: Jane Smith <jane.smith@marist.edu>", "aria-label": "Emails to add" });
+    const role = h("select", { "aria-label": "Role for these people" }, ROLE_OPTS.map(([v0, t]) => h("option", { value: v0, text: t })));
+    const until = h("input", { type: "date", "aria-label": "Access until (optional)" });
+    const untilBox = h("div", { hidden: true }, h("label", { text: "Access until (optional)" }), until);
+    role.addEventListener("change", () => { untilBox.hidden = role.value !== "assistant"; });
     const welcome = h("input", { type: "checkbox" });
-    const result = h("p", { class: "muted", hidden: true });
-    const addBtn = h("button", { class: "btn primary", type: "submit", text: "Add to staff list" });
+    const result = h("p", { class: "muted add-result", hidden: true });
+    const addBtn = h("button", { class: "btn primary", type: "submit", text: "Add people" });
     const form = h("form", { class: "inline-form", novalidate: true },
       ta,
-      h("div", { class: "inline-row" }, h("label", { class: "check" }, welcome, h("span", { text: "Send them a welcome email with the site link (uses your monthly email allowance; up to 20 at a time)" })), h("span", { class: "grow" }), addBtn),
+      h("div", { class: "inline-row" },
+        h("div", {}, h("label", { text: "Add them as" }), role),
+        untilBox,
+        h("span", { class: "grow" }),
+        addBtn),
+      h("label", { class: "check" }, welcome, h("span", { text: "Send them a welcome email with the site link (uses your monthly email allowance; up to 20 at a time)" })),
       result);
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       if (!ta.value.trim()) return;
       await busy(addBtn, "Adding…", async () => {
         try {
-          const r = await api("/api/admin/staff", { method: "POST", body: { emails: ta.value, welcome: welcome.checked } });
+          const r = await api("/api/admin/staff", { method: "POST", body: { emails: ta.value, role: role.value, accessUntil: role.value === "assistant" ? until.value || null : null, welcome: welcome.checked } });
           const parts = [];
           parts.push(r.added.length ? `Added ${r.added.length}: ${r.added.join(", ")}.` : "No new people added.");
-          if (r.already.length) parts.push(`Already on the list: ${r.already.join(", ")}.`);
+          if (r.already.length) parts.push(`Already on the list: ${r.already.join(", ")}. Change their role in the table below.`);
           if (welcome.checked && r.added.length) parts.push(r.welcomeFailed ? `${r.welcomed} welcome emails sent, ${r.welcomeFailed} failed.` : `Welcome email sent to ${r.welcomed}.`);
-          ta.value = "";
-          D.staff = (await api("/api/admin/staff")).staff;
-          renderStaff();
+          await reloadStaff();
           const res = staffPanel.querySelector(".add-result");
           res.textContent = parts.join(" ");
           res.hidden = false;
-          refreshLog();
-        } catch (err) { result.textContent = err.message; result.className = "err"; result.hidden = false; }
+        } catch (err) { result.textContent = err.message; result.className = "err add-result"; result.hidden = false; }
       });
     });
-    result.classList.add("add-result");
 
-    const search = h("input", { type: "search", placeholder: "Find a person…", value: filter, "aria-label": "Find a person" });
+    const counts = { all: D.staff.length };
+    for (const p of D.staff) counts[p.role] = (counts[p.role] || 0) + 1;
+    const filters = [["all", "Everyone"], ["superadmin", "Super admins"], ["admin", "Admins"], ["staff", "Staff"], ["assistant", "Student assistants"]];
+    const seg = h("div", { class: "seg", role: "group", "aria-label": "Show" }, filters.filter(([k]) => k === "all" || counts[k]).map(([k, t]) =>
+      h("button", { type: "button", "aria-pressed": String(roleFilter === k), onclick: () => { roleFilter = k; renderStaff(); } }, t, h("span", { class: "n", text: String(counts[k] || 0) }))));
+    const search = h("input", { type: "search", placeholder: "Find a person…", value: filter, "aria-label": "Find a person", style: { "max-width": "280px" } });
     const tbody = h("tbody");
     const draw = () => {
       tbody.textContent = "";
-      const rows = D.staff.filter((s) => s.email.includes(filter.toLowerCase()));
-      if (!rows.length) tbody.append(h("tr", {}, h("td", { colspan: 4, class: "muted", text: D.staff.length ? "No match." : "Nobody yet. Paste emails above." })));
-      for (const s of rows) {
-        tbody.append(h("tr", {},
-          h("td", { class: "email" }, s.email, s.isAdmin ? h("span", { class: "pill", style: { "margin-left": "8px" }, text: "Admin" }) : null),
-          h("td", { class: "hide-phone", text: s.lastSignIn ? fmtStamp(s.lastSignIn) : "Never" }),
-          h("td", { text: String(s.devices) }),
-          h("td", { class: "actions" },
-            h("button", { class: "btn small", type: "button", text: "Devices", onclick: () => showDevices(s) }),
-            s.devices ? h("button", { class: "btn small", type: "button", text: "Revoke all devices", onclick: () => revokeAll(s) }) : null,
-            s.isAdmin ? null : h("button", { class: "btn small danger", type: "button", text: "Remove", onclick: () => removeStaff(s) }))));
-      }
+      const q = filter.toLowerCase();
+      const rows = D.staff.filter((p) => (roleFilter === "all" || p.role === roleFilter) && (p.email.includes(q) || (p.name || "").toLowerCase().includes(q)));
+      if (!rows.length) tbody.append(h("tr", {}, h("td", { colspan: 5, class: "muted", text: D.staff.length ? "No match." : "Nobody yet. Paste emails above." })));
+      for (const p of rows) tbody.append(personRow(p));
     };
     search.addEventListener("input", () => { filter = search.value.trim(); draw(); });
     draw();
 
     staffPanel.replaceChildren(
-      h("h2", { text: `Staff list (${D.staff.length})` }),
-      h("p", { class: "muted sub", text: "Only people on this list can sign in. Removing someone signs them out everywhere immediately." }),
+      h("h2", { text: "People" }),
+      h("p", { class: "muted sub", text: "Only people on this list can sign in — anyone else is told right away that it's for SCSM staff only. Admins can do everything here, including making other admins, but can't change super admins." }),
       form,
-      h("div", { class: "inline-row" }, search),
+      h("div", { class: "inline-row" }, seg, h("span", { class: "grow" }), search),
       h("div", { style: { "overflow-x": "auto" } }, h("table", { class: "tbl" },
-        h("thead", {}, h("tr", {}, h("th", { text: "Email" }), h("th", { class: "hide-phone", text: "Last sign-in" }), h("th", { text: "Devices" }), h("th"))),
+        h("thead", {}, h("tr", {}, h("th", { text: "Person" }), h("th", { text: "Role" }), h("th", { class: "hide-phone", text: "Last sign-in" }), h("th", { class: "hide-phone", text: "Devices" }), h("th"))),
         tbody)));
+  }
+
+  function personRow(p) {
+    const isSuper = p.role === "superadmin";
+    const who = h("td", { class: "email" },
+      p.name ? h("span", { class: "who-name", text: p.name }) : null,
+      h("span", { class: p.name ? "who-mail" : "", text: p.email }),
+      p.email === me().email ? h("span", { class: "pill", style: { "margin-left": "6px" }, text: "You" }) : null);
+    let roleCell;
+    if (isSuper) {
+      roleCell = h("td", {}, h("span", { class: "pill role-superadmin", text: "Super admin" }));
+    } else {
+      const sel = h("select", { class: "role-select", "aria-label": `Role for ${p.email}` },
+        ROLE_OPTS.map(([v0, t]) => h("option", { value: v0, text: t, selected: p.role === v0 })));
+      sel.addEventListener("change", () => changeRole(p, sel));
+      roleCell = h("td", {}, sel,
+        p.accessUntil ? h("div", { class: "small", style: { "margin-top": "4px", color: p.expired ? "var(--danger)" : "var(--ink-3)" }, text: p.expired ? `Access ended ${p.accessUntil}` : `Until ${p.accessUntil}` }) : null);
+    }
+    return h("tr", {},
+      who, roleCell,
+      h("td", { class: "hide-phone", text: p.lastSignIn ? fmtStamp(p.lastSignIn) : "Never" }),
+      h("td", { class: "hide-phone", text: String(p.devices) }),
+      h("td", { class: "actions" },
+        h("button", { class: "btn small", type: "button", text: "Devices", onclick: () => showDevices(p) }),
+        isSuper ? null : h("button", { class: "btn small", type: "button", text: "Edit", onclick: () => editPerson(p) }),
+        isSuper ? null : h("button", { class: "btn small danger", type: "button", text: "Remove", onclick: () => removeStaff(p) })));
+  }
+
+  async function changeRole(p, sel) {
+    const to = sel.value;
+    const label = ROLE_OPTS.find(([v0]) => v0 === to)[1];
+    const msg = to === "admin"
+      ? `${p.email} will be able to do everything in Admin, including adding and removing people and making other admins.`
+      : p.email === me().email && p.role === "admin" ? "You'll lose access to the Admin tab." : `${p.email} will become ${label.toLowerCase()}.`;
+    if (!(await confirmDialog(`Make ${p.name || p.email} ${to === "admin" ? "an admin" : label.toLowerCase()}?`, msg, "Change role"))) { sel.value = p.role; return; }
+    try {
+      await api(`/api/admin/staff/${encodeURIComponent(p.email)}`, { method: "PUT", body: { role: to } });
+      toast(`${p.email} is now ${label.toLowerCase()}.`);
+      if (p.email === me().email) { await ctx.reload(); if (!ctx.state.me.isAdmin) { location.hash = "#calendar"; return; } }
+      await reloadStaff();
+    } catch (err) { sel.value = p.role; toast(err.message); }
+  }
+
+  function editPerson(p) {
+    const name = h("input", { value: p.name || "", maxlength: 80, placeholder: "e.g. Jane Smith" });
+    const until = h("input", { type: "date", value: p.accessUntil || "" });
+    const err = h("p", { class: "err", hidden: true });
+    const save = h("button", { class: "btn primary", type: "button", text: "Save" });
+    const d = modal(`Edit ${p.email}`, h("div", { style: { display: "flex", "flex-direction": "column", gap: "12px" } },
+      field("Name", name),
+      field("Access until (optional)", until, "After this day they can't sign in anymore — handy for student assistants at the end of a semester. Leave empty for no end."),
+      err), [h("button", { class: "btn", type: "button", text: "Cancel", onclick: () => d.close() }), save]);
+    save.onclick = () => busy(save, "Saving…", async () => {
+      try {
+        await api(`/api/admin/staff/${encodeURIComponent(p.email)}`, { method: "PUT", body: { name: name.value.trim(), accessUntil: until.value || null } });
+        d.close();
+        toast("Saved.");
+        await reloadStaff();
+      } catch (e2) { err.textContent = e2.message; err.hidden = false; }
+    });
   }
 
   async function reloadStaff() { D.staff = (await api("/api/admin/staff")).staff; renderStaff(); refreshLog(); }
@@ -166,6 +233,7 @@ export function initAdmin(root, ctx) {
           h("div", { class: "nm", text: c.name }),
           h("div", { class: "meta" },
             h("span", { class: "pill", style: { display: "inline-flex", gap: "5px", "align-items": "center" } }, h("span", { style: { display: "inline-flex", width: "13px" } }, sourceIcon(c.source)), SOURCES[c.source].label),
+            h("span", { class: `pill ${c.audience === "public" ? "role-admin" : c.audience === "staff" ? "role-staff" : ""}`, text: { public: "Public", everyone: "Everyone signed in", staff: "Staff only" }[c.audience || "everyone"] }),
             c.isShift ? h("span", { class: "pill", text: "Shift calendar" }) : null,
             c.defaultOn ? null : h("span", { class: "pill", text: "Off by default" }),
             c.owner ? h("span", { class: "muted small", text: `Contact: ${c.owner}` }) : null)),
@@ -173,7 +241,7 @@ export function initAdmin(root, ctx) {
     });
     calPanel.replaceChildren(
       h("h2", { text: "Shared calendars" }),
-      h("p", { class: "muted sub", text: "Everyone on the staff list sees these. Links stay on the server — staff never see them." }),
+      h("p", { class: "muted sub", text: "Choose who sees each one: the public front page, everyone signed in, or staff only. The links stay on the server — nobody else ever sees them." }),
       D.calendars.length ? rows : h("p", { class: "muted", text: "No shared calendars yet. Add the Student Work Schedule, School Events, Club Events and Social Media." }),
       h("div", {}, h("button", { class: "btn primary", type: "button", text: "+ Add shared calendar", onclick: () => editCalendar(null) })));
   }
@@ -191,7 +259,7 @@ export function initAdmin(root, ctx) {
   }
 
   function editCalendar(cal) {
-    const c = cal || { name: "", color: "#2F5BD3", url: "", source: "", owner: "", defaultOn: true, isShift: false };
+    const c = cal || { name: "", color: "#E0475B", url: "", source: "", owner: "", defaultOn: true, isShift: false, audience: "everyone" };
     let sourceTouched = !!cal;
     const name = h("input", { maxlength: 80, value: c.name, required: true });
     const url = h("input", { maxlength: 2000, value: c.url, placeholder: "https://outlook.office365.com/owa/calendar/…/calendar.ics", spellcheck: "false", autocomplete: "off" });
@@ -203,6 +271,9 @@ export function initAdmin(root, ctx) {
     const colors = h("div", { class: "swatches" });
     const picked = colorPicker(colors, c.color);
     const defaultOn = h("input", { type: "checkbox", checked: c.defaultOn });
+    const audience = h("select", {},
+      [["public", "Public — anyone, on the front page (no sign-in)"], ["everyone", "Everyone signed in (staff and student assistants)"], ["staff", "Staff only (hidden from student assistants)"]]
+        .map(([v0, t]) => h("option", { value: v0, text: t, selected: (c.audience || "everyone") === v0 })));
     const isShift = h("input", { type: "checkbox", checked: c.isShift });
     const testOut = h("div", { class: "test-result", hidden: true });
     const err = h("p", { class: "err", hidden: true });
@@ -240,6 +311,7 @@ export function initAdmin(root, ctx) {
         h("div", { class: "inline-row" }, testBtn),
         testOut,
         field("Source", source, "Detected from the link. Change it if it's wrong."),
+        field("Who can see it", audience, "Public calendars show on the front page for anyone. The link itself is never shown to anyone."),
         field("Owner or contact (optional)", owner),
         h("div", {}, h("span", { class: "label", text: "Color" }), colors),
         h("label", { class: "check" }, defaultOn, h("span", { text: "On by default for staff (each person can still turn it off)" })),
@@ -249,7 +321,7 @@ export function initAdmin(root, ctx) {
 
     save.onclick = () => busy(save, "Saving…", async () => {
       err.hidden = true;
-      const body = { name: name.value.trim(), color: picked.value, url: url.value.trim(), source: source.value, owner: owner.value.trim(), defaultOn: defaultOn.checked, isShift: isShift.checked };
+      const body = { name: name.value.trim(), color: picked.value, url: url.value.trim(), source: source.value, owner: owner.value.trim(), defaultOn: defaultOn.checked, isShift: isShift.checked, audience: audience.value };
       if (!body.name) { err.textContent = "Give the calendar a name."; err.hidden = false; return; }
       if (!body.url) { err.textContent = "Paste the calendar's ICS link."; err.hidden = false; return; }
       try {
@@ -374,12 +446,14 @@ export function initAdmin(root, ctx) {
     const s = D.settings;
     const title = h("input", { value: s.siteTitle, maxlength: 60 });
     const sender = h("input", { value: s.senderName, maxlength: 60 });
+    const tagline = h("textarea", { rows: 2, maxlength: 200 });
+    tagline.value = s.publicTagline || "";
     const err = h("p", { class: "err", hidden: true });
     const save = h("button", { class: "btn primary", type: "button", text: "Save settings" });
     save.onclick = () => busy(save, "Saving…", async () => {
       err.hidden = true;
       try {
-        D.settings = await api("/api/admin/settings", { method: "PUT", body: { siteTitle: title.value.trim(), senderName: sender.value.trim() } });
+        D.settings = await api("/api/admin/settings", { method: "PUT", body: { siteTitle: title.value.trim(), senderName: sender.value.trim(), publicTagline: tagline.value.trim() } });
         toast("Settings saved.");
         ctx.reload();
         refreshLog();
@@ -387,7 +461,8 @@ export function initAdmin(root, ctx) {
     });
     setPanel.replaceChildren(
       h("h2", { text: "Settings" }),
-      field("Site title", title),
+      field("Site title", title, "Shown at the top of every page, including the public front page."),
+      field("Front page tagline", tagline, "The sentence under the title on the public front page."),
       field("Sender name for emails", sender, {
         emailjs: "Emails are sent through EmailJS, from the Gmail or Outlook account connected there. Free plan: 200 emails a month.",
         brevo: "Emails are sent through Brevo.",

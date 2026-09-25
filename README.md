@@ -207,7 +207,7 @@ Each commit starts a deploy. Early ones may fail until everything is filled in, 
 3. Open the **Admin** tab:
    1. **Shared calendars → + Add shared calendar.** Add each calendar with its ICS link (see the next section) and click **Test link**. For the **Student Work Schedule**, tick **Shift calendar**, then check that the name preview shows the workers' names correctly.
    2. **Desk coverage:** check the office hours (Mon–Fri, 9–5 by default) and add holidays and breaks.
-   3. **Staff list:** paste everyone's emails, and tick **Send them a welcome email**.
+   3. **People:** paste everyone's emails and choose their role. Welcome emails use your 200-a-month allowance, so it's usually better to send people the link yourself.
 
 You're live. 🎉
 
@@ -238,23 +238,34 @@ An **ICS link** is a private web address that lets other apps read a calendar. Y
 
 Everything is done in the **Admin** tab. Every change is recorded under **Recent activity**, with who made it and when.
 
+### Who can do what
+
+| Role | Who | Can |
+|---|---|---|
+| **Super admin** | Set in `wrangler.toml` (`SUPERADMIN_EMAILS`) | Everything. Can't be removed, demoted or signed out by anyone from the website. |
+| **Admin** | Made in **Admin → People** | Everything a super admin can, including making other admins, but can't change super admins. |
+| **Staff** | Added in **Admin → People** | See all calendars, coverage, add private events. |
+| **Student assistant** | Added in **Admin → People** | Same as staff, but can't see calendars marked "Staff only". Can have an **access until** date (e.g. end of semester). |
+| **Anyone else** | — | Sees the public front page only. If they try to sign in they're told right away that it's for SCSM staff, and no email is sent. |
+
+### Common tasks
+
 | Task | How |
 |---|---|
-| Give someone access | **Staff list**: paste their email, tick "welcome email", and click **Add**. |
-| Add many people | Paste the whole list: one per line, comma-separated, or copied from Outlook ("Name &lt;email&gt;" works). |
+| Give someone access | **People**: paste their email, choose **Staff** or **Student assistant**, click **Add people**. |
+| Add many people | Paste the whole list: one per line, comma-separated, copied from a spreadsheet, or "Name &lt;email&gt;" — names are kept. |
+| Make someone an admin | **People**: change their role to **Admin**. It takes effect on their next click. |
+| Student assistants for a semester | Add them as **Student assistant** with an **access until** date. After that day they can't sign in. |
 | Remove someone | Click **Remove** next to them. They're signed out everywhere immediately. |
-| Someone lost a phone | Click **Devices** next to them, then **Sign out** on that device, or use **Revoke all devices**. |
-| See who's using it | The **Last sign-in** and **Devices** columns. |
+| Someone lost a phone | Click **Devices** next to them, then **Sign out** on that device. |
 | Add a calendar | **Shared calendars → + Add**, paste the ICS link, then **Test link**. |
-| Change a color, name or contact | **Shared calendars → Edit**. |
+| Show a calendar on the public front page | Edit it and set **Who can see it** to **Public**. |
+| Hide a calendar from student assistants | Set **Who can see it** to **Staff only**. |
 | Change the order in the sidebar | Use the ▲ ▼ arrows. |
-| Make a calendar optional | Edit it and untick **On by default**. Staff can still turn it on. |
 | Add a holiday or break | **Desk coverage → + Add closed dates**, then **Save**. |
-| Change office hours or people needed | **Desk coverage**, then **Save**. |
-| Worker names look wrong in Coverage | Add the extra word to **Words to ignore**. You can test a title right there. |
 | Email the gap list | **Coverage** tab, then **Copy list**, then paste it into Outlook. |
-| Change the site title or email sender name | **Settings**. |
-| Add another admin | Edit `wrangler.toml` on GitHub: `ADMIN_EMAILS = "boris.sargsyan1@marist.edu,new.admin@marist.edu"`. It's live after the automatic deploy. |
+| Change the site title or front-page text | **Settings**. |
+| Add another super admin | Edit `SUPERADMIN_EMAILS` in `wrangler.toml` on GitHub. It's live after the automatic deploy. |
 
 **Events themselves** are still edited in Outlook or Google as usual. The website picks up changes within about 20 minutes.
 
@@ -298,11 +309,12 @@ Rough numbers, assuming each person opens the site about 3 times a workday. Chec
   - Codes expire after **10 minutes**, and 5 wrong tries cancel a code.
   - Each email can request at most **3 codes an hour**.
   - Codes are stored **hashed**.
-  - The reply is the same whether or not an email is on the list.
+  - Emails that aren't on the list are refused immediately, and no email is sent. (This means someone could check whether an address is on the list; that was a deliberate choice for clearer messages.)
 - **Sessions:** one database row per device, and it stores only a hash of the device's token.
   - Sessions last 365 days, or 12 hours if "Keep me signed in" is unticked.
   - Removing a person, or revoking their devices, takes effect on their next click.
-- **Every helper request checks the session.** Admin requests also check that the email is in `ADMIN_EMAILS`.
+- **Every helper request checks the session and the person's current role.** Admin requests need the Admin or Super admin role. Super admins (`SUPERADMIN_EMAILS`) can't be changed from the website at all.
+- **Calendar visibility is enforced on the server.** Student assistants can't load "Staff only" calendars, and signed-out visitors can only load calendars marked "Public".
 - **Private data is scoped on the server.** Personal events, choices and calendar links are always looked up by the signed-in person's email, so one person can never read or change another's. There are tests for this.
 - **Shared ICS links never reach the browser.**
 - **CORS allows only your website address**, from `ALLOWED_ORIGINS` in `wrangler.toml`.

@@ -1,11 +1,12 @@
 // SCSM Calendar — main app: sign-in, calendar view, sidebar toggles, event details and editors.
 
 import { api, apiFeed, getToken, setToken, clearToken, whenSignedOut, apiConfigured } from "./api.js";
-import { $, $$, h, toast, setErr, confirmDialog, busy, colorPicker, sourceIcon, SOURCES, fmtDate, fmtTime, linkify } from "./dom.js";
+import { $, $$, h, toast, setErr, confirmDialog, busy, colorPicker, sourceIcon, SOURCES, fmtDate, fmtTime, linkify, eventColors } from "./dom.js";
 import { TZ, zonedToUtc, parseHm, addDays, ymd } from "./tz.js";
 import { parseIcs, expandIcs } from "./ics.js";
 import { initCoverage } from "./coverage-view.js";
 import { initAdmin } from "./admin-view.js";
+import { initPublic } from "./public-view.js";
 
 const ICAL = window.ICAL;
 
@@ -30,15 +31,28 @@ function deviceLabel() {
   return `${browser} on ${os}`;
 }
 
-function showSignIn(message) {
-  $("#boot").hidden = true;
-  $("#app").hidden = true;
-  $("#signin").hidden = false;
+/** The sign-in window, over the public front page. */
+function openSignIn(message) {
   $("#formEmail").hidden = false;
   $("#formCode").hidden = true;
   setErr($("#errEmail"), message || "");
+  if (!$("#dlgSignin").open) $("#dlgSignin").showModal();
   $("#inEmail").focus();
 }
+
+let publicView = null;
+function showPublic() {
+  $("#boot").hidden = true;
+  $("#app").hidden = true;
+  $("#public").hidden = false;
+  const signedIn = !!S.me && !!getToken();
+  for (const id of ["#btnStaffSignIn"]) $(id).textContent = signedIn ? "My calendar" : "Staff sign in";
+  publicView = publicView || initPublic({ openEvent: (ev) => openEvent(ev) });
+  publicView.show();
+}
+const staffButton = () => (S.me && getToken() ? (location.hash = "#calendar") : openSignIn());
+$("#btnStaffSignIn").onclick = staffButton;
+$("#btnStaffSignIn2").onclick = staffButton;
 
 $("#formEmail").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -72,6 +86,8 @@ $("#formCode").addEventListener("submit", async (e) => {
     try {
       const r = await api("/api/auth/verify", { method: "POST", body: { email: pendingEmail, code, remember, device: deviceLabel() } });
       setToken(r.token, remember);
+      $("#dlgSignin").close();
+      if (location.hash === "#public") history.replaceState(null, "", "#calendar");
       await start();
     } catch (err) {
       setErr($("#errCode"), err.message);
@@ -84,8 +100,10 @@ $("#btnBack").onclick = () => { $("#formCode").hidden = true; $("#formEmail").hi
 
 whenSignedOut((msg) => {
   S.feeds.clear();
+  S.me = null;
   for (const d of $$("dialog[open]")) d.close();
-  showSignIn(msg);
+  showPublic();
+  openSignIn(msg);
 });
 
 async function signOut() {
@@ -279,9 +297,8 @@ function feedSource(key) {
           start: o.allDay ? o.startDate : new Date(o.start),
           end: o.allDay ? o.endDate : new Date(o.end),
           allDay: o.allDay,
-          backgroundColor: cal.color,
-          borderColor: cal.color,
-          extendedProps: { kind: cal.kind, cal, location: o.location, description: o.description },
+          ...eventColors(cal.color),
+          extendedProps: { kind: cal.kind, cal, color: cal.color, location: o.location, description: o.description },
         })));
       }, () => ok([]));
     },
@@ -297,7 +314,7 @@ function personalOccurrences(fromMs, toMs) {
     for (let d = e.date, n = 0; d <= last && n < 200; d = addDays(d, 7), n++) {
       if (d < fromDay) continue;
       if (d > toDay) break;
-      const base = { title: e.title, backgroundColor: e.color, borderColor: e.color, extendedProps: { kind: "mine", personal: e, location: e.location, description: e.notes, occurrenceDate: d } };
+      const base = { title: e.title, ...eventColors(e.color), extendedProps: { kind: "mine", personal: e, color: e.color, location: e.location, description: e.notes, occurrenceDate: d } };
       if (e.allDay) out.push({ ...base, id: `mine|${e.id}|${d}`, start: d, end: addDays(d, 1), allDay: true });
       else out.push({ ...base, id: `mine|${e.id}|${d}`, start: new Date(zonedToUtc(d, parseHm(e.startTime))), end: new Date(zonedToUtc(d, parseHm(e.endTime))) });
     }
@@ -331,7 +348,7 @@ function whenText(ev) {
 
 function openEvent(ev) {
   const p = ev.extendedProps;
-  const color = ev.backgroundColor;
+  const color = p.color || ev.borderColor;
   $("#evStripe").style.setProperty("--c", color);
   $("#evSwatch").style.setProperty("--c", color);
   $("#evTitle").textContent = ev.title;
@@ -344,6 +361,11 @@ function openEvent(ev) {
     calName = "My events";
     source = "scsm";
     sourceText = `${SOURCES.scsm.from} · only you can see this`;
+  } else if (p.kind === "public") {
+    calName = p.cal.name;
+    source = p.cal.source;
+    owner = p.cal.owner || "";
+    sourceText = p.cal.name;
   } else {
     calName = p.cal.name;
     source = p.cal.source;
@@ -517,6 +539,9 @@ $("#ffDelete").onclick = async () => {
 let coverageView = null, adminView = null;
 
 function showTab(tab) {
+  if (tab === "public") { showPublic(); return; }
+  $("#public").hidden = true;
+  $("#app").hidden = false;
   if (tab === "admin" && !S.me?.isAdmin) tab = "calendar";
   if (!["calendar", "coverage", "admin"].includes(tab)) tab = "calendar";
   S.tab = tab;
@@ -529,7 +554,11 @@ function showTab(tab) {
   if (location.hash.slice(1) !== tab) history.replaceState(null, "", `#${tab}`);
 }
 for (const b of $$(".tabs [role=tab]")) b.onclick = () => showTab(b.dataset.tab);
-window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+window.addEventListener("hashchange", () => {
+  const tab = location.hash.slice(1);
+  if (S.me && getToken()) showTab(tab);
+  else if (tab !== "public") showPublic();
+});
 
 $("#btnMe").onclick = (e) => {
   e.stopPropagation();
@@ -573,8 +602,16 @@ async function reload() {
   $("#siteTitle").textContent = S.site.title;
   $("#tabAdmin").hidden = !S.me.isAdmin;
   $("#devBanner").hidden = !S.site.devMode;
-  $("#meEmail").textContent = `Signed in as ${S.me.email}`;
-  $("#btnMe").textContent = S.me.email[0].toUpperCase();
+  const first = (S.me.name || "").split(" ")[0] || S.me.email.split(/[@._]/)[0];
+  const nice = first.charAt(0).toUpperCase() + first.slice(1);
+  const hour = Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hourCycle: "h23", timeZone: TZ }).format(new Date()));
+  $("#helloDate").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  $("#helloName").textContent = `${hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"}, ${nice}`;
+  $("#meName").textContent = S.me.name || "";
+  $("#meEmail").textContent = S.me.email;
+  $("#meRole").textContent = S.me.roleLabel || "";
+  $("#meRole").className = `pill role role-${S.me.role}`;
+  $("#btnMe").textContent = (S.me.name || S.me.email)[0].toUpperCase();
   renderSidebar();
   renderNotices();
   refreshSources();
@@ -587,23 +624,17 @@ const ctx = {
 };
 
 async function start() {
-  if (!window.FullCalendar || !window.ICAL) {
-    $("#boot").textContent = "Couldn't load the calendar tools. Check your internet connection and reload the page.";
-    return;
-  }
-  if (!apiConfigured()) {
-    $("#boot").textContent = "This site isn't connected to its Worker yet. An admin needs to set apiUrl in config.js (see README).";
-    return;
-  }
-  if (!getToken()) return showSignIn();
+  const bootMsg = (msg) => { $(".spinner").hidden = true; $("#bootText").textContent = msg; };
+  if (!window.FullCalendar || !window.ICAL) return bootMsg("Couldn't load the calendar tools. Check your internet connection and reload the page.");
+  if (!apiConfigured()) return bootMsg("This site isn't connected to its Worker yet. An admin needs to set apiUrl in config.js (see README).");
+  if (!getToken()) return showPublic();
   try {
-    $("#signin").hidden = true;
+    $("#public").hidden = true;
     $("#boot").hidden = false;
     await reload();
   } catch (err) {
-    if (err.status === 401) return; // whenSignedOut already showed the sign-in screen
-    $("#boot").textContent = `${err.message} Try reloading the page.`;
-    return;
+    if (err.status === 401) return; // whenSignedOut already showed the public page and sign-in
+    return bootMsg(`${err.message} Try reloading the page.`);
   }
   $("#boot").hidden = true;
   $("#app").hidden = false;

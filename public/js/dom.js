@@ -138,3 +138,9 @@ export function linkify(el, text) {
     else if (p) el.append(document.createTextNode(p));
   }
 }
+
+/** Soft, tinted event chips: pale fill, colored left edge, dark text (readable on any color). */
+export function eventColors(color) {
+  const c = /^#[0-9a-f]{6}$/i.test(color) ? color : "#5B4FB3";
+  return { backgroundColor: `${c}24`, borderColor: c, textColor: "#221E33" };
+}

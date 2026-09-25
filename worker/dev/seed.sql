@@ -3,12 +3,14 @@
 
 DELETE FROM calendars;
 DELETE FROM feed_cache;
-INSERT INTO calendars (name, color, url, source, owner, default_on, is_shift, sort_order, created_at, updated_at) VALUES
-  ('Student Work Schedule', '#B07A00', 'sample:work',   'outlook', 'SCSM office',  1, 1, 1, 0, 0),
-  ('School Events',         '#2F5BD3', 'sample:school', 'outlook', 'Dean''s office', 1, 0, 2, 0, 0),
-  ('Club Events',           '#1B7F52', 'sample:clubs',  'google',  'Parijat Das',  1, 0, 3, 0, 0),
-  ('Social Media',          '#983BAE', 'sample:social', 'outlook', '',             0, 0, 4, 0, 0);
+INSERT INTO calendars (name, color, url, source, owner, default_on, is_shift, audience, sort_order, created_at, updated_at) VALUES
+  ('Club & School Events',  '#E0475B', 'sample:clubs',  'other',   'Parijat Das',  1, 0, 'public',   1, 0, 0),
+  ('School Events',         '#5B4FB3', 'sample:school', 'outlook', 'Dean''s office', 1, 0, 'public',   2, 0, 0),
+  ('Student Work Schedule', '#D98A0B', 'sample:work',   'outlook', 'SCSM office',  1, 1, 'everyone', 3, 0, 0),
+  ('Social Media',          '#1E8E62', 'sample:social', 'outlook', '',             0, 0, 'staff',    4, 0, 0);
 
-INSERT OR IGNORE INTO staff (email, added_at, added_by) VALUES
-  ('staff@marist.edu', 0, 'seed'),
-  ('elina@marist.edu', 0, 'seed');
+DELETE FROM staff WHERE added_by = 'seed';
+INSERT INTO staff (email, name, role, access_until, added_at, added_by) VALUES
+  ('staff@marist.edu',     'Sam Rivera',   'staff',     NULL,         0, 'seed'),
+  ('elina@marist.edu',     'Elina Park',   'assistant', '2026-12-18', 0, 'seed'),
+  ('admin@marist.edu',     'Alex Morgan',  'admin',     NULL,         0, 'seed');
