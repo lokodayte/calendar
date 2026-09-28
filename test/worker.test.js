@@ -730,3 +730,20 @@ describe("free-plan database limits (continued)", () => {
     env.DB.prepare = realPrepare;
   });
 });
+
+describe("Outlook links", () => {
+  test("an unpublished Outlook calendar gets a clear explanation, not an error number", async () => {
+    const url = "https://outlook.office365.com/owa/calendar/abc@marist.edu/def/calendar.ics";
+    feeds.set(url, () => {
+      // What Outlook really does: 302 → errorFE.aspx?httpCode=404 → 302 → olkerror.html → 417.
+      const res = new Response("", { status: 417 });
+      Object.defineProperty(res, "url", { value: "https://outlook.office365.com/mail/olkerror.html?httpCode=404" });
+      return res;
+    });
+    const admin = await signIn(ADMIN);
+    const r = await call("POST", "/api/admin/test-feed", { token: admin, body: { url } });
+    assert.equal(r.data.ok, false);
+    assert.match(r.data.error, /Outlook says this calendar isn't published/);
+    assert.match(r.data.error, /publish it again with “Can view all details”/);
+  });
+});

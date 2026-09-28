@@ -73,6 +73,13 @@ export async function downloadIcs(env, url) {
     await r.body?.cancel();
     await new Promise((res) => setTimeout(res, RETRY.delaysMs[attempt]));
   }
+  // Outlook doesn't answer 404 for a calendar that isn't published: it redirects to its own error page.
+  const outlookError = /outlook\.office(?:365)?\.com\/(?:owa\/auth\/errorFE\.aspx|mail\/olkerror\.html)\?httpCode=(\d+)/i.exec(r.url || "");
+  if (outlookError) {
+    throw new Error(outlookError[1] === "404"
+      ? "Outlook says this calendar isn't published (not found). The calendar's owner should open Outlook on the web → Settings → Calendar → Shared calendars, publish it again with “Can view all details”, and copy the new ICS link. Brand-new links can take a few minutes to start working"
+      : `Outlook refused this link (error ${outlookError[1]})`);
+  }
   if (r.status === 404 || r.status === 410) throw new Error("the link no longer works (not found). For Google, use the “Secret address in iCal format”");
   if (r.status === 401 || r.status === 403) throw new Error("the calendar refused access. Is it still published or shared?");
   if (r.status === 429) throw temporary("the calendar's server is limiting requests right now (error 429). It usually works again within a few minutes");
