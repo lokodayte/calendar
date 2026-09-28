@@ -8,7 +8,7 @@ export const LIMITS = {
   SHORT_SESSION_HOURS: 12,    // when "keep me signed in" is unticked
   MAX_EVENTS_PER_USER: 1000,
   MAX_FEEDS_PER_USER: 10,
-  MAX_CALENDARS: 50,
+  MAX_CALENDARS: 40,          // reordering saves each one; D1 free allows ~50 queries per request
   MAX_STAFF_PER_PASTE: 200,
   MAX_WELCOME_EMAILS: 20,     // EmailJS's free plan is 200 emails a month
 };

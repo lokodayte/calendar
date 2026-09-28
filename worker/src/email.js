@@ -14,7 +14,7 @@ export function emailProvider(env) {
  * In DEV_MODE the email is printed to the terminal instead.
  * Failures are remembered in settings.email_status so the Admin tab can warn about them.
  */
-export async function sendEmail(env, senderName, { to, subject, text, html }) {
+export async function sendEmail(env, senderName, { to, subject, text, html }, { track = true } = {}) {
   if (devMode(env)) {
     console.log(`\n──── EMAIL (dev mode, not sent) ────\nTo: ${to}\nSubject: ${subject}\n\n${text}\n────────────────────────────────────\n`);
     return true;
@@ -54,12 +54,12 @@ export async function sendEmail(env, senderName, { to, subject, text, html }) {
     }
   }
   if (error) console.error("Email not sent.", error);
-  await noteEmailStatus(env, error);
-  return !error;
+  if (track) await noteEmailStatus(env, error);
+  return error ? false : true;
 }
 
 /** Save the latest failure (or clear it after a success). Writes only when the state changes. */
-async function noteEmailStatus(env, error) {
+export async function noteEmailStatus(env, error) {
   try {
     const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'email_status'").first();
     if (!error && !row) return;

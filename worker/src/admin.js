@@ -4,7 +4,7 @@ import { fail, json, readJson } from "./lib/http.js";
 import * as v from "./lib/validate.js";
 import { LIMITS, getSettings, devMode, isSuperAdmin, superAdmins, personFromRow, ROLES, ROLE_LABEL } from "./settings.js";
 import { detectSource, downloadIcs, dropCache, summarizeIcs } from "./feeds.js";
-import { sendEmail, welcomeEmail, emailProvider, pauseBetweenEmails } from "./email.js";
+import { sendEmail, welcomeEmail, emailProvider, pauseBetweenEmails, noteEmailStatus } from "./email.js";
 
 const logStmt = (env, actor, action, detail) =>
   env.DB.prepare("INSERT INTO admin_log (at, actor, action, detail) VALUES (?, ?, ?, ?)").bind(Date.now(), actor, action, String(detail).slice(0, 1000));
@@ -54,10 +54,18 @@ export async function addStaff(req, env, ctx, user) {
   if (welcome && people.length > LIMITS.MAX_WELCOME_EMAILS) fail(400, `Welcome emails can go to up to ${LIMITS.MAX_WELCOME_EMAILS} people at a time. Add fewer people, or untick “Send welcome email”.`);
   const now = Date.now();
   const toAdd = people.filter((p) => !isSuperAdmin(env, p.email));
-  const results = toAdd.length ? await env.DB.batch(toAdd.map((p) =>
-    env.DB.prepare("INSERT OR IGNORE INTO staff (email, name, role, added_at, added_by) VALUES (?, ?, ?, ?, ?)")
-      .bind(p.email, p.name, role, now, user.email))) : [];
-  const added = toAdd.filter((_, i) => results[i].meta.changes > 0).map((p) => p.email);
+  // D1's free plan allows ~50 queries per request and 100 values per query, so insert 20 people
+  // per statement (5 values each) instead of one statement per person. RETURNING tells us who was new.
+  const stmts = [];
+  for (let i = 0; i < toAdd.length; i += 20) {
+    const chunk = toAdd.slice(i, i + 20);
+    stmts.push(env.DB.prepare(
+      `INSERT OR IGNORE INTO staff (email, name, role, added_at, added_by) VALUES ${chunk.map(() => "(?, ?, ?, ?, ?)").join(", ")} RETURNING email`,
+    ).bind(...chunk.flatMap((p) => [p.email, p.name, role, now, user.email])));
+  }
+  const results = stmts.length ? await env.DB.batch(stmts) : [];
+  const inserted = new Set(results.flatMap((r) => r.results.map((row) => row.email)));
+  const added = toAdd.map((p) => p.email).filter((e) => inserted.has(e));
   const already = people.map((p) => p.email).filter((e) => !added.includes(e));
   if (added.length) await logStmt(env, user.email, "people.add", `Added ${added.length} ${ROLE_LABEL[role].toLowerCase()}${added.length === 1 ? "" : "s"}: ${list(added)}`).run();
 
@@ -67,8 +75,10 @@ export async function addStaff(req, env, ctx, user) {
     const mail = welcomeEmail(s.site_title, env.SITE_URL);
     for (const [i, to] of added.entries()) {
       if (i) await pauseBetweenEmails(env);
-      (await sendEmail(env, s.sender_name, { to, ...mail })) ? welcomed++ : welcomeFailed++;
+      // Don't record the email status per person (a database query each); record the outcome once below.
+      (await sendEmail(env, s.sender_name, { to, ...mail }, { track: false })) ? welcomed++ : welcomeFailed++;
     }
+    await noteEmailStatus(env, welcomeFailed ? `${welcomeFailed} welcome email${welcomeFailed === 1 ? "" : "s"} couldn't be sent. Check the email service (EmailJS) and its monthly limit.` : null);
   }
   return json({ added, already, welcomed, welcomeFailed });
 }

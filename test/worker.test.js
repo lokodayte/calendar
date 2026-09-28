@@ -62,6 +62,7 @@ async function call(method, path, { body, token, origin = SITE } = {}) {
   if (token) headers.authorization = `Bearer ${token}`;
   if (body !== undefined) headers["content-type"] = "application/json";
   const pending = [];
+  env.DB.startRequest(); // enforce D1's per-request query limit, like Cloudflare does
   const res = await worker.fetch(
     new Request("https://api.example.workers.dev" + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }),
     env,
@@ -685,5 +686,47 @@ describe("emails", () => {
     await call("POST", "/api/auth/request", { body: { email: A } });
     assert.match(outbox[0].html, /<img src="https:\/\/scsm\.web\.app\/img\/marist-scsm-lockup\.png"/);
     assert.match(outbox[0].html, /alt="Marist University — School of Computer Science and Mathematics"/);
+  });
+});
+
+describe("free-plan database limits", () => {
+  test("pasting a long staff list (150 people) works in one go", async () => {
+    const boss = await signIn(ADMIN);
+    const list = Array.from({ length: 150 }, (_, i) => `Person ${i} <person${i}@marist.edu>`).join("\n");
+    const r = await call("POST", "/api/admin/staff", { token: boss, body: { emails: list, role: "staff" } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.added.length, 150);
+    const again = await call("POST", "/api/admin/staff", { token: boss, body: { emails: list + "\nnew.one@marist.edu", role: "staff" } });
+    assert.deepEqual(again.data.added, ["new.one@marist.edu"]);
+    assert.equal(again.data.already.length, 150);
+    const people = (await call("GET", "/api/admin/staff", { token: boss })).data.staff;
+    assert.equal(people.find((p) => p.email === "person42@marist.edu").name, "Person 42");
+  });
+});
+
+describe("free-plan database limits (continued)", () => {
+  test("welcome emails to 20 people stay within the limit, even when every email fails", async () => {
+    const boss = await signIn(ADMIN);
+    emailFails = true;
+    const list = Array.from({ length: 20 }, (_, i) => `w${i}@marist.edu`).join(", ");
+    const r = await call("POST", "/api/admin/staff", { token: boss, body: { emails: list, role: "staff", welcome: true } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.deepEqual([r.data.added.length, r.data.welcomeFailed], [20, 20]);
+    const s = (await call("GET", "/api/admin/settings", { token: boss })).data;
+    assert.match(s.emailStatus.error, /20 welcome emails couldn't be sent/);
+  });
+
+  test("unexpected server errors give a reference, and admins also see the reason", async () => {
+    const boss = await signIn(ADMIN);
+    const a = await signIn(A);
+    const realPrepare = env.DB.prepare.bind(env.DB);
+    env.DB.prepare = (sql) => (/FROM personal_events/.test(sql) ? { bind: () => { throw new Error("boom"); } } : realPrepare(sql));
+    const forStaff = await call("GET", "/api/my-agenda", { token: a });
+    assert.equal(forStaff.status, 500);
+    assert.match(forStaff.data.error, /reference [0-9a-f]{8}/);
+    assert.ok(!forStaff.data.error.includes("boom"));
+    const forAdmin = await call("GET", "/api/my-agenda", { token: boss });
+    assert.match(forAdmin.data.error, /Details for admins: boom/);
+    env.DB.prepare = realPrepare;
   });
 });

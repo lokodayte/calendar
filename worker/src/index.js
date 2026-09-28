@@ -86,7 +86,7 @@ export default {
       });
     }
 
-    let res;
+    let res, user = null;
     try {
       const path = new URL(req.url).pathname.replace(/\/+$/, "") || "/";
       if (path === "/" && req.method === "GET") {
@@ -103,7 +103,6 @@ export default {
           res = json({ error: pathMatched ? "Method not allowed." : "Not found." }, pathMatched ? 405 : 404);
         } else {
           const { r, params } = match;
-          let user = null;
           if (r.access !== "public") {
             user = await authenticate(req, env, ctx);
             if (r.access === "admin" && !user.isAdmin) throw new HttpError(403, "Only admins can do that.");
@@ -114,8 +113,11 @@ export default {
     } catch (err) {
       if (err instanceof HttpError) res = json({ error: err.message }, err.status);
       else {
-        console.error(err && err.stack || err);
-        res = json({ error: "Something went wrong on the server. Please try again." }, 500);
+        // A short reference ties what the person sees to the log line (Cloudflare → Worker → Observability).
+        const ref = crypto.randomUUID().slice(0, 8);
+        console.error(`[error ${ref}]`, err && err.stack || err);
+        const detail = user?.isAdmin ? ` Details for admins: ${String(err && err.message || err).slice(0, 200)}` : "";
+        res = json({ error: `Something went wrong on the server (reference ${ref}). Please try again.${detail}` }, 500);
       }
     }
     return withCors(res, cors.value);

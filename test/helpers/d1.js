@@ -1,5 +1,8 @@
 // A small stand-in for Cloudflare D1, backed by Node's built-in SQLite, for tests.
-// Implements the parts of the D1 API the Worker uses: prepare/bind/first/all/run and batch.
+// Implements the parts of the D1 API the Worker uses: prepare/bind/first/all/run and batch,
+// and enforces D1's free-plan limits so code that would fail on Cloudflare fails here too:
+//   - at most 100 bound values per statement
+//   - at most 50 queries per request (each statement in a batch counts); tests call startRequest()
 
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";
@@ -11,9 +14,11 @@ class Statement {
   constructor(db, sql, params = []) { this.db = db; this.sql = sql; this.params = params; }
   bind(...params) {
     for (const p of params) if (p === undefined) throw new Error("D1_TYPE_ERROR: undefined is not a valid bind value");
+    if (params.length > 100) throw new Error(`D1_ERROR: too many SQL variables (${params.length} > 100)`);
     return new Statement(this.db, this.sql, params);
   }
   _exec() {
+    this.db.owner?.count();
     const st = this.db.prepare(this.sql);
     if (/^\s*(SELECT|WITH)|RETURNING/i.test(this.sql)) {
       const rows = st.all(...this.params).map((r) => ({ ...r }));
@@ -34,11 +39,19 @@ class Statement {
 export class FakeD1 {
   constructor() {
     this.db = new DatabaseSync(":memory:");
+    this.db.owner = this;
+    this.queries = 0;
+    this.limit = Infinity;
     for (const f of readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort()) {
       this.db.exec(readFileSync(MIGRATIONS + f, "utf8"));
     }
   }
   prepare(sql) { return new Statement(this.db, sql); }
+  /** Begin counting queries for one Worker request (D1 free plan: 50). */
+  startRequest(limit = 50) { this.queries = 0; this.limit = limit; }
+  count() {
+    if (++this.queries > this.limit) throw new Error(`D1_ERROR: too many queries in one request (${this.queries} > ${this.limit})`);
+  }
   async batch(stmts) {
     this.db.exec("BEGIN");
     try {
@@ -51,5 +64,5 @@ export class FakeD1 {
     }
   }
   /** Direct synchronous query, for test assertions. */
-  q(sql, ...params) { return this.db.prepare(sql).all(...params).map((r) => ({ ...r })); }
+  q(sql, ...params) { return this.db.prepare(sql).all(...params).map((r) => ({ ...r })); } // not counted
 }
