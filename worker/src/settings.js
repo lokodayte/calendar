@@ -1,5 +1,5 @@
 export const LIMITS = {
-  CACHE_MINUTES: 20,          // how often calendar links are re-read
+  CACHE_MINUTES: 5,           // how often calendar links are re-read (admins can also "Refresh now")
   RETRY_AFTER_ERROR_MIN: 5,   // after a failed fetch, serve the saved copy this long before retrying
   CODE_MINUTES: 10,           // how long an emailed code works
   MAX_TRIES: 5,               // wrong guesses allowed per code

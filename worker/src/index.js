@@ -27,6 +27,7 @@ const routes = [
   ["POST", "/api/my-feeds", "user", me.createMyFeed],
   ["PUT", "/api/my-feeds/:id", "user", me.updateMyFeed],
   ["DELETE", "/api/my-feeds/:id", "user", me.deleteMyFeed],
+  ["POST", "/api/my-feeds/:id/refresh", "user", me.refreshMyFeed],
 
   ["GET", "/api/admin/staff", "admin", admin.listStaff],
   ["POST", "/api/admin/staff", "admin", admin.addStaff],
@@ -40,6 +41,7 @@ const routes = [
   ["POST", "/api/admin/calendars/order", "admin", admin.reorderCalendars],
   ["PUT", "/api/admin/calendars/:id", "admin", admin.updateCalendar],
   ["DELETE", "/api/admin/calendars/:id", "admin", admin.deleteCalendar],
+  ["POST", "/api/admin/calendars/:id/refresh", "admin", admin.refreshCalendar],
   ["POST", "/api/admin/test-feed", "admin", admin.testFeed],
   ["GET", "/api/admin/settings", "admin", admin.getAdminSettings],
   ["PUT", "/api/admin/settings", "admin", admin.saveAdminSettings],

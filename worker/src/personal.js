@@ -4,7 +4,7 @@
 import { fail, json, readJson } from "./lib/http.js";
 import * as v from "./lib/validate.js";
 import { LIMITS, getSettings, devMode, ROLE_LABEL } from "./settings.js";
-import { detectSource, downloadIcs, dropCache, feedResponse, getFeed } from "./feeds.js";
+import { detectSource, downloadIcs, dropCache, feedResponse, getFeed, summarizeIcs } from "./feeds.js";
 
 const addDaysIso = (date, n) => new Date(Date.parse(date + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 
@@ -67,7 +67,7 @@ export async function sharedFeed(req, env, ctx, user, params) {
 /* ---------- the public front page (no sign-in) ---------- */
 
 // Browsers may keep public answers for 5 minutes, so a busy day costs few Worker requests.
-const PUBLIC_CACHE = { "cache-control": "public, max-age=300" };
+const PUBLIC_CACHE = { "cache-control": "public, max-age=60" };
 
 /** GET /api/public — site title and the calendars marked "Public". */
 export async function publicInfo(req, env) {
@@ -227,4 +227,22 @@ export async function deleteMyFeed(req, env, ctx, user, params) {
   if (!r.meta.changes) fail(404, "Not found.");
   await dropCache(env, `mine:${id}`).run();
   return json({ ok: true });
+}
+
+/** Download a calendar right now, skipping the saved copy. Reports how many events it has. */
+export async function refreshNow(env, ctx, key, url, name) {
+  try {
+    const r = await getFeed(env, ctx, key, url, { force: true });
+    if (r.stale) return json({ ok: false, error: `Couldn't reach ${name} right now: ${r.error}. Still showing the last saved copy.` });
+    return json({ ok: true, events: summarizeIcs(r.text).events, fetchedAt: r.fetchedAt });
+  } catch (err) {
+    return json({ ok: false, error: `Couldn't reach ${name} right now: ${err.message}.` });
+  }
+}
+
+/** POST /api/my-feeds/:id/refresh — only the owner. */
+export async function refreshMyFeed(req, env, ctx, user, params) {
+  const f = await env.DB.prepare("SELECT id, name, url FROM personal_feeds WHERE id = ? AND email = ?").bind(v.id(params.id), user.email).first();
+  if (!f) fail(404, "Not found.");
+  return refreshNow(env, ctx, `mine:${f.id}`, f.url, f.name);
 }

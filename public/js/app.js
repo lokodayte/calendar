@@ -488,6 +488,7 @@ function openFeedEditor(feed) {
   $("#ffUrlNote").hidden = !feed;
   $("#ffSource").value = feed ? feed.source : "";
   $("#ffDelete").hidden = !feed;
+  $("#ffRefresh").hidden = !feed;
   feedColor = colorPicker($("#ffColors"), feed ? feed.color : "#4B5563");
   setErr($("#ffErr"));
   $("#dlgFeed").showModal();
@@ -515,6 +516,18 @@ $("#formFeed").addEventListener("submit", async (e) => {
       toast(r.warning || (editingFeed ? "Calendar updated." : "Calendar added. Only you can see it."));
     } catch (err) { setErr($("#ffErr"), err.message); }
   });
+});
+
+$("#ffRefresh").onclick = () => busy($("#ffRefresh"), "Refreshing…", async () => {
+  const f = editingFeed;
+  try {
+    const r = await api(`/api/my-feeds/${f.id}/refresh`, { method: "POST" });
+    if (!r.ok) return setErr($("#ffErr"), r.error);
+    S.feeds.delete(keyFeed(f.id));
+    refreshSources();
+    $("#dlgFeed").close();
+    toast(`${f.name} is up to date: ${r.events} event${r.events === 1 ? "" : "s"}.`);
+  } catch (err) { setErr($("#ffErr"), err.message); }
 });
 
 $("#ffDelete").onclick = async () => {

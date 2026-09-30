@@ -256,13 +256,14 @@ Everything is done in the **Admin** tab. Every change is recorded under **Recent
 | Remove someone | Click **Remove** next to them. They're signed out everywhere immediately. |
 | Someone lost a phone | Click **Devices** next to them, then **Sign out** on that device. |
 | Add a calendar | **Shared calendars → + Add**, paste the ICS link, then **Test link**. |
+| A change in the original calendar isn't showing | **Shared calendars → Refresh now** next to that calendar. |
 | Show a calendar on the public front page | Edit it and set **Who can see it** to **Public**. |
 | Keep a calendar for signed-in staff only | Set **Who can see it** to **Staff only** (the default for new calendars). |
 | Change the order in the sidebar | Use the ▲ ▼ arrows. |
 | Change the site title or front-page text | **Settings**. |
 | Add another super admin | Edit `SUPERADMIN_EMAILS` in `wrangler.toml` on GitHub. It's live after the automatic deploy. |
 
-**Events themselves** are still edited in Outlook or Google as usual. The website picks up changes within about 20 minutes.
+**Events themselves** are still edited in Outlook, Google or calendar.online as usual. The website picks up changes within about 5 minutes, or right away with **Admin → Shared calendars → Refresh now**. The original service can add its own delay: Outlook's published links can take up to about 30 minutes to show a change.
 
 ---
 
@@ -287,13 +288,13 @@ Rough numbers, assuming each person opens the site about 3 times a workday. Chec
 |---|---|---|---|
 | Cloudflare Workers | 100,000 requests/day | ~2,000–3,000/day | Each visit is about 6–8 requests. |
 | D1 reads | 5 million rows/day | ~20,000–50,000/day | Sessions and settings are looked up by key. |
-| D1 writes | 100,000 rows/day | ~1,000–3,000/day | Mostly feed refreshes (at most 72 per calendar per day, and only when someone is looking). "Last seen" is saved at most twice a day per device. |
+| D1 writes | 100,000 rows/day | ~2,000–6,000/day | Mostly feed refreshes (at most 288 per calendar per day, and only when someone is looking). "Last seen" is saved at most twice a day per device. |
 | D1 storage | 5 GB | under 50 MB | Feeds are stored compressed. |
 | EmailJS | **200 emails/month** | ~5–20/day at the start, then a few a week | Emails go out only when a device signs in for the first time, or when welcome emails are sent. **This is the tightest limit.** Launch month can use most of it, so keep welcome emails to a minimum. |
 | Firebase Hosting | 10 GB stored, 360 MB/day transfer | ~20–50 MB/day | FullCalendar and ical.js load from the jsDelivr CDN, which doesn't count. |
 | GitHub Actions | 2,000 min/month (private repo) | ~2 min per push | Public repos are unlimited. |
 
-**Built to stay small:** feeds are cached for 20 minutes on the server and 5 minutes in the browser. Toggle changes are saved once, after you stop clicking. Admin changes are grouped into one database write where possible.
+**Built to stay small:** feeds are cached for 5 minutes on the server (at most 288 refreshes per calendar a day, and only while someone is looking) and the public page for 1 minute in the browser. Toggle changes are saved once, after you stop clicking. Admin changes are grouped into one database write where possible.
 
 ---
 

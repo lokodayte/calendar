@@ -225,6 +225,7 @@ export function initAdmin(root, ctx) {
             h("span", { class: `pill ${c.audience === "public" ? "role-admin" : "role-staff"}`, text: c.audience === "public" ? "Public" : "Staff only" }),
             c.defaultOn ? null : h("span", { class: "pill", text: "Off by default" }),
             c.owner ? h("span", { class: "muted small", text: `Contact: ${c.owner}` }) : null)),
+        h("button", { class: "btn small", type: "button", text: "Refresh now", title: "Pull the latest changes from the original calendar now", onclick: (e) => refreshCalendar(c, e.currentTarget) }),
         h("button", { class: "btn small", type: "button", text: "Edit", onclick: () => editCalendar(c) })));
     });
     calPanel.replaceChildren(
@@ -232,6 +233,17 @@ export function initAdmin(root, ctx) {
       h("p", { class: "muted sub", text: "Choose who sees each one: anyone on the public front page, or only signed-in staff. The links stay on the server — nobody else ever sees them." }),
       D.calendars.length ? rows : h("p", { class: "muted", text: "No shared calendars yet. Add the Student Work Schedule, School Events, Club Events and Social Media." }),
       h("div", {}, h("button", { class: "btn primary", type: "button", text: "+ Add shared calendar", onclick: () => editCalendar(null) })));
+  }
+
+  async function refreshCalendar(c, btn) {
+    await busy(btn, "Refreshing…", async () => {
+      try {
+        const r = await api(`/api/admin/calendars/${c.id}/refresh`, { method: "POST" });
+        if (!r.ok) return toast(r.error);
+        await ctx.reload();
+        toast(`${c.name} is up to date: ${r.events} event${r.events === 1 ? "" : "s"}. If a change still isn't there, the original calendar hasn't updated its link yet (Outlook can take up to 30 minutes).`);
+      } catch (err) { toast(err.message); }
+    });
   }
 
   async function move(i, dir) {

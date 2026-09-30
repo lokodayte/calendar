@@ -107,7 +107,7 @@
           <ul class="cal-list" id="listMine"></ul>
           <button class="link add-link" type="button" id="btnAddFeed">+ Add my Outlook or Google calendar</button>
         </div>
-        <p class="side-foot">Shared calendars refresh about every 20 minutes. Your own events are private — only you can see them.</p>
+        <p class="side-foot">Calendars refresh about every 5 minutes. Your own events are private — only you can see them.</p>
       </aside>
       <div class="scrim" id="scrim" hidden></div>
       <div class="main">
@@ -234,6 +234,7 @@
       <p class="err" id="ffErr" role="alert" hidden></p>
       <div class="dlg-actions">
         <button class="btn danger" type="button" id="ffDelete" hidden>Remove</button>
+        <button class="btn" type="button" id="ffRefresh" hidden>Refresh now</button>
         <span class="grow"></span>
         <button class="btn" type="button" data-close>Cancel</button>
         <button class="btn primary" type="submit" id="ffSave">Save</button>

@@ -4,6 +4,7 @@ import { fail, json, readJson } from "./lib/http.js";
 import * as v from "./lib/validate.js";
 import { LIMITS, getSettings, devMode, isSuperAdmin, superAdmins, personFromRow, ROLES, ROLE_LABEL } from "./settings.js";
 import { detectSource, downloadIcs, dropCache, summarizeIcs } from "./feeds.js";
+import { refreshNow } from "./personal.js";
 import { sendEmail, welcomeEmail, emailProvider, pauseBetweenEmails, noteEmailStatus } from "./email.js";
 
 const logStmt = (env, actor, action, detail) =>
@@ -238,6 +239,13 @@ export async function reorderCalendars(req, env, ctx, user) {
     logStmt(env, user.email, "calendar.reorder", "Changed the order of shared calendars"),
   ]);
   return json({ ok: true });
+}
+
+/** POST /api/admin/calendars/:id/refresh — pull the latest version now instead of waiting for the next refresh. */
+export async function refreshCalendar(req, env, ctx, user, params) {
+  const cal = await env.DB.prepare("SELECT id, name, url FROM calendars WHERE id = ?").bind(v.id(params.id)).first();
+  if (!cal) fail(404, "That calendar was removed.");
+  return refreshNow(env, ctx, `shared:${cal.id}`, cal.url, cal.name);
 }
 
 /** POST {url} or {id} — fetch now and report what's in it. */

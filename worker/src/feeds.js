@@ -96,19 +96,20 @@ export async function downloadIcs(env, url) {
 /**
  * Cached feed text. Returns {text, stale, fetchedAt, error}.
  * Fresh copies come from the cache for CACHE_MINUTES; if the source is down, the last good copy is returned with stale=true.
+ * force = true skips the cache ("Refresh now").
  */
-export async function getFeed(env, ctx, key, url) {
+export async function getFeed(env, ctx, key, url, { force = false } = {}) {
   const now = Date.now();
   const urlHash = await sha256(url);
   const row = await env.DB.prepare("SELECT url_hash, body, fetched_at, checked_at, last_error FROM feed_cache WHERE key = ?").bind(key).first();
   const sameUrl = row && row.url_hash === urlHash;
   const cached = sameUrl && row.body ? row : null;
 
-  if (cached && now - cached.checked_at < LIMITS.CACHE_MINUTES * 60e3) {
+  if (!force && cached && now - cached.checked_at < LIMITS.CACHE_MINUTES * 60e3) {
     const stale = !!cached.last_error;
     return { text: await unpackBody(cached.body), stale, fetchedAt: cached.fetched_at, error: cached.last_error || null };
   }
-  if (sameUrl && !row.body && row.last_error && now - row.checked_at < LIMITS.RETRY_AFTER_ERROR_MIN * 60e3) {
+  if (!force && sameUrl && !row.body && row.last_error && now - row.checked_at < LIMITS.RETRY_AFTER_ERROR_MIN * 60e3) {
     throw new Error(row.last_error);
   }
 

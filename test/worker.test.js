@@ -673,7 +673,7 @@ describe("public front page", () => {
     assert.deepEqual(info.data.calendars.map((c) => c.name), ["Club & School Events"]);
     assert.ok(!info.text.includes("calendar.online"));
     assert.match(info.data.site.tagline, /Computer Science/);
-    assert.match(info.headers.get("cache-control"), /public, max-age=300/);
+    assert.match(info.headers.get("cache-control"), /public, max-age=60/);
     const feed = await call("GET", `/api/public/feeds/${pub.id}`);
     assert.equal(feed.status, 200);
     assert.match(feed.text, /Hackathon/);
@@ -745,5 +745,57 @@ describe("Outlook links", () => {
     assert.equal(r.data.ok, false);
     assert.match(r.data.error, /Outlook says this calendar isn't published/);
     assert.match(r.data.error, /publish it again with “Can view all details”/);
+  });
+});
+
+describe("refreshing calendars", () => {
+  test("“Refresh now” pulls a change immediately instead of waiting for the saved copy", async () => {
+    const url = "https://outlook.office365.com/owa/calendar/x@marist.edu/y/calendar.ics";
+    feeds.set(url, ICS("Old title"));
+    const admin = await signIn(ADMIN);
+    const id = (await call("POST", "/api/admin/calendars", { token: admin, body: { name: "SchoolCSM Events", color: "#C8102E", url } })).data.calendar.id;
+    assert.match((await call("GET", `/api/feeds/shared/${id}`, { token: admin })).text, /Old title/);
+    feeds.set(url, ICS("New title"));
+    assert.match((await call("GET", `/api/feeds/shared/${id}`, { token: admin })).text, /Old title/, "still the saved copy");
+    const r = await call("POST", `/api/admin/calendars/${id}/refresh`, { token: admin });
+    assert.deepEqual([r.data.ok, r.data.events], [true, 2]);
+    assert.match((await call("GET", `/api/feeds/shared/${id}`, { token: admin })).text, /New title/);
+    // Staff can't force refreshes of shared calendars.
+    const a = await signIn(A);
+    assert.equal((await call("POST", `/api/admin/calendars/${id}/refresh`, { token: a })).status, 403);
+  });
+
+  test("the saved copy is only kept for 5 minutes", async () => {
+    const url = "https://example.com/c.ics";
+    feeds.set(url, ICS("Before"));
+    const admin = await signIn(ADMIN);
+    const id = (await call("POST", "/api/admin/calendars", { token: admin, body: { name: "C", color: "#111111", url } })).data.calendar.id;
+    await call("GET", `/api/feeds/shared/${id}`, { token: admin });
+    feeds.set(url, ICS("After"));
+    env.DB.q("UPDATE feed_cache SET checked_at = checked_at - ?", 5 * 60e3 + 1000);
+    assert.match((await call("GET", `/api/feeds/shared/${id}`, { token: admin })).text, /After/);
+  });
+
+  test("a refresh that fails keeps the last saved copy and says why", async () => {
+    const url = "https://example.com/d.ics";
+    feeds.set(url, ICS("Saved"));
+    const admin = await signIn(ADMIN);
+    const id = (await call("POST", "/api/admin/calendars", { token: admin, body: { name: "D", color: "#111111", url } })).data.calendar.id;
+    await call("GET", `/api/feeds/shared/${id}`, { token: admin });
+    feeds.set(url, () => new Response("down", { status: 500 }));
+    const r = await call("POST", `/api/admin/calendars/${id}/refresh`, { token: admin });
+    assert.equal(r.data.ok, false);
+    assert.match(r.data.error, /Couldn't reach D right now.*last saved copy/);
+    assert.match((await call("GET", `/api/feeds/shared/${id}`, { token: admin })).text, /Saved/);
+  });
+
+  test("people can refresh their own linked calendars, and only their own", async () => {
+    const url = "https://calendar.google.com/calendar/ical/me/private-x/basic.ics";
+    feeds.set(url, ICS("Mine"));
+    const a = await signIn(A);
+    const b = await signIn(B);
+    const id = (await call("POST", "/api/my-feeds", { token: a, body: { name: "My Google", url, color: "#123456" } })).data.feed.id;
+    assert.equal((await call("POST", `/api/my-feeds/${id}/refresh`, { token: a })).data.ok, true);
+    assert.equal((await call("POST", `/api/my-feeds/${id}/refresh`, { token: b })).status, 404);
   });
 });
