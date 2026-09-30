@@ -60,7 +60,7 @@ export async function savePrefs(req, env, ctx, user) {
 export async function sharedFeed(req, env, ctx, user, params) {
   const cal = await env.DB.prepare("SELECT id, name, url, audience FROM calendars WHERE id = ?").bind(v.id(params.id)).first();
   if (!cal) fail(404, "That calendar was removed.");
-  try { return feedResponse(await getFeed(env, ctx, `shared:${cal.id}`, cal.url)); }
+  try { return feedResponse(await getFeed(env, ctx, `shared:${cal.id}`, cal.url), req); }
   catch (err) { fail(502, `Couldn't load ${cal.name} right now: ${err.message}.`); }
 }
 
@@ -86,9 +86,7 @@ export async function publicFeed(req, env, ctx, user, params) {
   const cal = await env.DB.prepare("SELECT id, name, url FROM calendars WHERE id = ? AND audience = 'public'").bind(v.id(params.id)).first();
   if (!cal) fail(404, "That calendar isn't public.");
   try {
-    const res = feedResponse(await getFeed(env, ctx, `shared:${cal.id}`, cal.url));
-    res.headers.set("cache-control", PUBLIC_CACHE["cache-control"]);
-    return res;
+    return feedResponse(await getFeed(env, ctx, `shared:${cal.id}`, cal.url), req, PUBLIC_CACHE["cache-control"]);
   } catch (err) { fail(502, `Couldn't load ${cal.name} right now.`); }
 }
 
@@ -96,7 +94,7 @@ export async function publicFeed(req, env, ctx, user, params) {
 export async function myFeed(req, env, ctx, user, params) {
   const f = await env.DB.prepare("SELECT id, name, url FROM personal_feeds WHERE id = ? AND email = ?").bind(v.id(params.id), user.email).first();
   if (!f) fail(404, "Not found.");
-  try { return feedResponse(await getFeed(env, ctx, `mine:${f.id}`, f.url)); }
+  try { return feedResponse(await getFeed(env, ctx, `mine:${f.id}`, f.url), req); }
   catch (err) { fail(502, `Couldn't load ${f.name} right now: ${err.message}.`); }
 }
 

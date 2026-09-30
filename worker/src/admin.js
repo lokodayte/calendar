@@ -5,7 +5,7 @@ import * as v from "./lib/validate.js";
 import { LIMITS, getSettings, devMode, isSuperAdmin, superAdmins, personFromRow, ROLES, ROLE_LABEL } from "./settings.js";
 import { detectSource, downloadIcs, dropCache, summarizeIcs } from "./feeds.js";
 import { refreshNow } from "./personal.js";
-import { sendEmail, welcomeEmail, emailProvider, pauseBetweenEmails, noteEmailStatus } from "./email.js";
+import { sendEmail, welcomeEmail, emailProvider, pauseBetweenEmails, noteEmailStatus, countEmail, MONTHLY_EMAIL_LIMIT, emailMonthKey } from "./email.js";
 
 const logStmt = (env, actor, action, detail) =>
   env.DB.prepare("INSERT INTO admin_log (at, actor, action, detail) VALUES (?, ?, ?, ?)").bind(Date.now(), actor, action, String(detail).slice(0, 1000));
@@ -79,6 +79,7 @@ export async function addStaff(req, env, ctx, user) {
       // Don't record the email status per person (a database query each); record the outcome once below.
       (await sendEmail(env, s.sender_name, { to, ...mail }, { track: false })) ? welcomed++ : welcomeFailed++;
     }
+    if (welcomed) await countEmail(env, welcomed);
     await noteEmailStatus(env, welcomeFailed ? `${welcomeFailed} welcome email${welcomeFailed === 1 ? "" : "s"} couldn't be sent. Check the email service (EmailJS) and its monthly limit.` : null);
   }
   return json({ added, already, welcomed, welcomeFailed });
@@ -276,6 +277,8 @@ export async function getAdminSettings(req, env) {
     siteTitle: s.site_title, senderName: s.sender_name, publicTagline: s.public_tagline, siteUrl: env.SITE_URL || "",
     emailProvider: emailProvider(env) || (devMode(env) ? "dev" : null),
     emailStatus: s.email_status && s.email_status.error ? s.email_status : null,
+    emailsThisMonth: Number(s[emailMonthKey()] || 0),
+    emailMonthlyLimit: MONTHLY_EMAIL_LIMIT,
   });
 }
 

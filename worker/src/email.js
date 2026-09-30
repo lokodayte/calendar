@@ -15,6 +15,7 @@ export function emailProvider(env) {
  * Failures are remembered in settings.email_status so the Admin tab can warn about them.
  */
 export async function sendEmail(env, senderName, { to, subject, text, html }, { track = true } = {}) {
+  // track = false: the caller records status and counts itself (bulk sends), to save database queries.
   if (devMode(env)) {
     console.log(`\n──── EMAIL (dev mode, not sent) ────\nTo: ${to}\nSubject: ${subject}\n\n${text}\n────────────────────────────────────\n`);
     return true;
@@ -54,6 +55,7 @@ export async function sendEmail(env, senderName, { to, subject, text, html }, { 
     }
   }
   if (error) console.error("Email not sent.", error);
+  else if (track) await countEmail(env);
   if (track) await noteEmailStatus(env, error);
   return error ? false : true;
 }
@@ -73,6 +75,19 @@ export async function noteEmailStatus(env, error) {
 }
 
 /** EmailJS allows about 1 email per second; pause between emails sent in a row. */
+/** EmailJS's free plan allows this many emails a month. */
+export const MONTHLY_EMAIL_LIMIT = 200;
+export const emailMonthKey = () => `emails_sent:${new Date().toISOString().slice(0, 7)}`;
+
+/** Count sent emails per calendar month, so admins can see how much of the allowance is left. */
+export async function countEmail(env, n = 1) {
+  try {
+    await env.DB.prepare(
+      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + excluded.value",
+    ).bind(emailMonthKey(), String(n)).run();
+  } catch { /* counting must never block sign-in */ }
+}
+
 export const pauseBetweenEmails = (env) =>
   emailProvider(env) === "emailjs" && !devMode(env) ? new Promise((r) => setTimeout(r, 1100)) : Promise.resolve();
 
@@ -80,7 +95,7 @@ export const pauseBetweenEmails = (env) =>
 const wrap = (inner, siteUrl) => {
   const base = /^https:\/\//.test(siteUrl || "") ? siteUrl.replace(/\/+$/, "") : "";
   const logo = base
-    ? `<img src="${esc(base)}/img/marist-scsm-lockup.png" width="288" height="36" alt="Marist University — School of Computer Science and Mathematics" style="display:block;border:0;width:288px;height:36px;margin:0 0 22px">`
+    ? `<img src="${esc(base)}/img/marist-scsm-lockup.jpg" width="288" height="36" alt="Marist University — School of Computer Science and Mathematics" style="display:block;border:0;width:288px;height:36px;margin:0 0 22px">`
     : "";
   return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#18223a;max-width:480px">${logo}${inner}</div>`;
 };

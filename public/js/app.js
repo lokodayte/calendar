@@ -4,7 +4,6 @@ import { api, apiFeed, getToken, setToken, clearToken, whenSignedOut, apiConfigu
 import { $, $$, h, toast, setErr, confirmDialog, busy, colorPicker, sourceIcon, SOURCES, fmtDate, fmtTime, linkify, eventColors } from "./dom.js";
 import { TZ, zonedToUtc, parseHm, addDays, ymd } from "./tz.js";
 import { parseIcs, expandIcs } from "./ics.js";
-import { initAdmin } from "./admin-view.js";
 import { initPublic } from "./public-view.js";
 
 const ICAL = window.ICAL;
@@ -551,6 +550,14 @@ $("#ffDelete").onclick = async () => {
    ===================================================================== */
 
 let adminView = null;
+/** The Admin page's code is only downloaded when an admin opens it, so other visitors don't pay for it. */
+async function loadAdmin() {
+  if (!adminView) {
+    const { initAdmin } = await import("./admin-view.js");
+    adminView = adminView || initAdmin($("#adminRoot"), ctx); // two quick clicks mustn't build it twice
+  }
+  return adminView;
+}
 
 function showTab(tab) {
   if (tab === "public") { showPublic(); return; }
@@ -563,7 +570,7 @@ function showTab(tab) {
   for (const v of $$(".view")) v.hidden = v.dataset.view !== tab;
   $("#btnDrawer").style.visibility = tab === "calendar" ? "" : "hidden";
   if (tab === "calendar" && S.fc) S.fc.updateSize();
-  if (tab === "admin") adminView.show();
+  if (tab === "admin") loadAdmin().then((v) => v.show(), (err) => toast(`Couldn't open Admin: ${err.message}`));
   if (location.hash.slice(1) !== tab) history.replaceState(null, "", `#${tab}`);
 }
 for (const b of $$(".tabs [role=tab]")) b.onclick = () => showTab(b.dataset.tab);
@@ -652,7 +659,6 @@ async function start() {
   if (!S.fc) {
     buildCalendar();
     refreshSources();
-    adminView = initAdmin($("#adminRoot"), ctx);
   }
   showTab(location.hash.slice(1) || "calendar");
 }

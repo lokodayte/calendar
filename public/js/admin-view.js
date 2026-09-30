@@ -374,6 +374,7 @@ export function initAdmin(root, ctx) {
         brevo: "Emails are sent through Brevo.",
         dev: "Local dev mode: emails are printed in the Worker terminal.",
       }[s.emailProvider] || "No email service is set up yet, so sign-in codes can't be sent. See README, Part A."),
+      h("p", { class: s.emailsThisMonth >= s.emailMonthlyLimit * 0.8 ? "warn" : "muted small", text: `Emails sent this month: ${s.emailsThisMonth} of ${s.emailMonthlyLimit} (free plan).${s.emailsThisMonth >= s.emailMonthlyLimit * 0.8 ? " Almost used up — avoid welcome emails until next month. People who are already signed in aren't affected." : ""}` }),
       s.emailStatus ? h("p", { class: "warn", text: `Emails are failing (last problem ${fmtStamp(s.emailStatus.at)}): ${s.emailStatus.error}. Staff may not be getting sign-in codes. If EmailJS says the limit is reached, it resets at the start of next month.` }) : null,
       s.siteUrl ? h("p", { class: "muted small", text: `Link in welcome emails: ${s.siteUrl}` }) : null,
       err, h("div", {}, save));

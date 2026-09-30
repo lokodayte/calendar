@@ -29,7 +29,7 @@ A calendar website for the School of Computer Science & Mathematics. Anyone can 
 4. [Getting a calendar's ICS link](#getting-a-calendars-ics-link)
 5. [Daily use for the admin](#daily-use-for-the-admin)
 6. [A short guide for staff](#a-short-guide-for-staff)
-7. [Free-plan limits with ~100 staff](#free-plan-limits-with-100-staff)
+7. [How much it can handle on the free plans](#how-much-it-can-handle-on-the-free-plans)
 8. [Security](#security)
 9. [Troubleshooting](#troubleshooting)
 10. [For developers](#for-developers)
@@ -280,21 +280,28 @@ Everything is done in the **Admin** tab. Every change is recorded under **Recent
 
 ---
 
-## Free-plan limits with ~100 staff
+## How much it can handle on the free plans
 
-Rough numbers, assuming each person opens the site about 3 times a workday. Check each provider's current limits, because they change.
+Measured on the live site. Check each provider's current limits now and then, because they change.
 
-| Service | Free limit | What 100 staff use | Notes |
+| Service | Free limit | What one visit uses | Roughly allows |
 |---|---|---|---|
-| Cloudflare Workers | 100,000 requests/day | ~2,000–3,000/day | Each visit is about 6–8 requests. |
-| D1 reads | 5 million rows/day | ~20,000–50,000/day | Sessions and settings are looked up by key. |
-| D1 writes | 100,000 rows/day | ~2,000–6,000/day | Mostly feed refreshes (at most 288 per calendar per day, and only when someone is looking). "Last seen" is saved at most twice a day per device. |
-| D1 storage | 5 GB | under 50 MB | Feeds are stored compressed. |
-| EmailJS | **200 emails/month** | ~5–20/day at the start, then a few a week | Emails go out only when a device signs in for the first time, or when welcome emails are sent. **This is the tightest limit.** Launch month can use most of it, so keep welcome emails to a minimum. |
-| Firebase Hosting | 10 GB stored, 360 MB/day transfer | ~20–50 MB/day | FullCalendar and ical.js load from the jsDelivr CDN, which doesn't count. |
-| GitHub Actions | 2,000 min/month (private repo) | ~2 min per push | Public repos are unlimited. |
+| **Firebase Hosting** (the website files) | 360 MB/day | ~63 KB on a first visit, ~5 KB on a repeat visit (logos and files are reused from the browser) | **~5,000 first-time + tens of thousands of repeat visits a day** |
+| **Cloudflare Workers** (the helper) | 100,000 requests/day | Public page: 1 + one per public calendar. Signed-in: ~2 + one per calendar shown | **~25,000–50,000 visits a day** |
+| **D1 reads** (the database) | 5 million rows/day | ~5–20 rows | not a real limit |
+| **D1 writes** | 100,000 rows/day | A calendar is re-checked at most every 5 minutes (≤288 a day, only while someone is looking); unchanged calendars aren't re-saved | **~12,000/day even with 40 busy calendars** |
+| **D1 storage** | 5 GB | — | under 50 MB |
+| **EmailJS** (sign-in codes) | **200 emails/month** | 1 per new device sign-in | **The tightest limit** — see Admin → Settings for this month's count |
+| **GitHub Actions** | unlimited for public repos | ~2 min per push | — |
 
-**Built to stay small:** feeds are cached for 5 minutes on the server (at most 288 refreshes per calendar a day, and only while someone is looking) and the public page for 1 minute in the browser. Toggle changes are saved once, after you stop clicking. Admin changes are grouped into one database write where possible.
+A school department checking the site all day is **a few percent** of these limits. The only one to watch is **EmailJS's 200 emails a month**; each device stays signed in for a year, so after the first month only a handful are used. Admin → Settings shows how many were sent this month and warns at 80%.
+
+**How it stays small and quick:**
+- **"Not modified" answers.** Every calendar copy has a version tag. A browser that already has the latest version gets a tiny "nothing changed" answer instead of the whole calendar.
+- **No re-saving unchanged calendars.** When a calendar is re-checked and nothing changed, only the check time is noted.
+- **Only what's needed is downloaded.** The sign-in logo loads only when someone opens sign-in; the Admin page's code loads only for admins who open it. The logos are compressed JPEGs cached for a week. FullCalendar, ical.js and the fonts come from free public CDNs, which don't count.
+- **Protection against runaway traffic.** One network making an unreasonable number of requests (e.g. a broken script or a bot) is briefly slowed down — per minute: 120 public-page requests, 10 code requests, 20 code checks — so it can't use up the day's allowance for everyone. This uses the helper's memory, not the database.
+- **Few database steps per click.** Pasting 200 people saves in 10 steps; D1's free plan allows 50 per request, and the tests enforce the same limits.
 
 ---
 

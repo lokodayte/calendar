@@ -117,12 +117,20 @@ export async function getFeed(env, ctx, key, url, { force = false } = {}) {
   try {
     const text = await downloadIcs(env, url);
     const body = await packBody(text);
+    if (sameUrl && row.body === body) {
+      // Nothing changed: just note that we checked. Keeps the "version" (fetched_at) the same,
+      // so browsers that already have this copy get a tiny "not modified" answer.
+      await save(env.DB.prepare("UPDATE feed_cache SET checked_at = ?, last_error = NULL WHERE key = ?").bind(now, key).run());
+      return { text, stale: false, fetchedAt: row.fetched_at, error: null };
+    }
+    // The version must change whenever the content does, even twice in the same millisecond.
+    const version = sameUrl && row.fetched_at >= now ? row.fetched_at + 1 : now;
     await save(env.DB.prepare(
       `INSERT INTO feed_cache (key, url_hash, body, fetched_at, checked_at, last_error) VALUES (?, ?, ?, ?, ?, NULL)
        ON CONFLICT(key) DO UPDATE SET url_hash = excluded.url_hash, body = excluded.body, fetched_at = excluded.fetched_at,
          checked_at = excluded.checked_at, last_error = NULL`,
-    ).bind(key, urlHash, body, now, now).run());
-    return { text, stale: false, fetchedAt: now, error: null };
+    ).bind(key, urlHash, body, version, now).run());
+    return { text, stale: false, fetchedAt: version, error: null };
   } catch (err) {
     const message = String(err && err.message || err).slice(0, 200);
     // Remember the failure so we don't retry on every page load; keep the last good copy.
@@ -143,16 +151,23 @@ export function dropCache(env, key) {
 }
 
 /** Response for a feed request. ICS text plus status headers the website reads. */
-export function feedResponse(result) {
-  return new Response(result.text, {
-    headers: {
-      // text/plain so Cloudflare's edge compresses it on the way out (costs the Worker no CPU).
-      "content-type": "text/plain; charset=utf-8",
-      "cache-control": "private, no-store",
-      "x-feed-status": result.stale ? "stale" : "fresh",
-      "x-feed-fetched-at": String(result.fetchedAt || 0),
-    },
-  });
+/**
+ * Response for a feed request: ICS text plus status headers the website reads.
+ * Each saved copy has a version tag (ETag). A browser that already has that version gets a
+ * "304 Not Modified" with no body, which saves bandwidth and time on every repeat visit.
+ */
+export function feedResponse(result, req, cacheControl = "private, no-cache") {
+  const headers = {
+    // text/plain so Cloudflare's edge compresses it on the way out (costs the Worker no CPU).
+    "content-type": "text/plain; charset=utf-8",
+    "cache-control": cacheControl,
+    etag: `"v${result.fetchedAt || 0}${result.stale ? "s" : ""}"`,
+    "x-feed-status": result.stale ? "stale" : "fresh",
+    "x-feed-fetched-at": String(result.fetchedAt || 0),
+  };
+  const known = (req && req.headers.get("if-none-match")) || "";
+  if (known.split(/\s*,\s*/).includes(headers.etag)) return new Response(null, { status: 304, headers });
+  return new Response(result.text, { headers });
 }
 
 /** Unique event titles and a count, for the admin "Test link" button. */

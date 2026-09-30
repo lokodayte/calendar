@@ -56,8 +56,8 @@ beforeEach(() => {
 });
 afterEach(() => { globalThis.fetch = realFetch; });
 
-async function call(method, path, { body, token, origin = SITE } = {}) {
-  const headers = {};
+async function call(method, path, { body, token, origin = SITE, headers: extra = {} } = {}) {
+  const headers = { ...extra };
   if (origin) headers.origin = origin;
   if (token) headers.authorization = `Bearer ${token}`;
   if (body !== undefined) headers["content-type"] = "application/json";
@@ -390,7 +390,7 @@ describe("admin-only endpoints", () => {
       assert.equal(r.status, 403, `${method} ${path}`);
     }
     assert.equal(env.DB.q("SELECT COUNT(*) AS n FROM staff")[0].n, 2);
-    assert.equal(env.DB.q("SELECT COUNT(*) AS n FROM settings")[0].n, 0);
+    assert.equal(env.DB.q("SELECT COUNT(*) AS n FROM settings WHERE key NOT LIKE 'emails_sent:%'")[0].n, 0);
   });
 
   test("signed-out callers get 401 on every admin endpoint", async () => {
@@ -684,7 +684,7 @@ describe("public front page", () => {
 describe("emails", () => {
   test("code emails carry the official logo from the website", async () => {
     await call("POST", "/api/auth/request", { body: { email: A } });
-    assert.match(outbox[0].html, /<img src="https:\/\/scsm\.web\.app\/img\/marist-scsm-lockup\.png"/);
+    assert.match(outbox[0].html, /<img src="https:\/\/scsm\.web\.app\/img\/marist-scsm-lockup\.jpg"/);
     assert.match(outbox[0].html, /alt="Marist University — School of Computer Science and Mathematics"/);
   });
 });
@@ -797,5 +797,55 @@ describe("refreshing calendars", () => {
     const id = (await call("POST", "/api/my-feeds", { token: a, body: { name: "My Google", url, color: "#123456" } })).data.feed.id;
     assert.equal((await call("POST", `/api/my-feeds/${id}/refresh`, { token: a })).data.ok, true);
     assert.equal((await call("POST", `/api/my-feeds/${id}/refresh`, { token: b })).status, 404);
+  });
+});
+
+describe("staying within the free plan under heavy use", () => {
+  test("a browser that already has a calendar gets a tiny “not modified” answer", async () => {
+    feeds.set("https://example.com/p.ics", ICS("Open house"));
+    const admin = await signIn(ADMIN);
+    const id = (await call("POST", "/api/admin/calendars", { token: admin, body: { name: "Events", color: "#C8102E", url: "https://example.com/p.ics", audience: "public" } })).data.calendar.id;
+    const first = await call("GET", `/api/public/feeds/${id}`);
+    const etag = first.headers.get("etag");
+    assert.ok(etag);
+    const again = await call("GET", `/api/public/feeds/${id}`, { headers: { "if-none-match": etag } });
+    assert.equal(again.status, 304);
+    assert.equal(again.text, "");
+    // Signed-in feeds work the same way.
+    const staffFirst = await call("GET", `/api/feeds/shared/${id}`, { token: admin });
+    assert.equal((await call("GET", `/api/feeds/shared/${id}`, { token: admin, headers: { "if-none-match": staffFirst.headers.get("etag") } })).status, 304);
+  });
+
+  test("an unchanged calendar isn't saved again, and keeps its version so browsers keep getting “not modified”", async () => {
+    feeds.set("https://example.com/q.ics", ICS("Same"));
+    const admin = await signIn(ADMIN);
+    const id = (await call("POST", "/api/admin/calendars", { token: admin, body: { name: "Q", color: "#111111", url: "https://example.com/q.ics", audience: "public" } })).data.calendar.id;
+    const first = await call("GET", `/api/public/feeds/${id}`);
+    env.DB.q("UPDATE feed_cache SET checked_at = checked_at - ?", 6 * 60e3); // due for a re-check
+    const second = await call("GET", `/api/public/feeds/${id}`, { headers: { "if-none-match": first.headers.get("etag") } });
+    assert.equal(second.status, 304, "same content, same version");
+    // A real change gets a new version.
+    feeds.set("https://example.com/q.ics", ICS("Changed"));
+    env.DB.q("UPDATE feed_cache SET checked_at = checked_at - ?", 6 * 60e3);
+    const third = await call("GET", `/api/public/feeds/${id}`, { headers: { "if-none-match": first.headers.get("etag") } });
+    assert.equal(third.status, 200);
+    assert.match(third.text, /Changed/);
+  });
+
+  test("one network can't use up the allowance: 11th code request in a minute is slowed down", async () => {
+    const h = { "cf-connecting-ip": "203.0.113.7" };
+    for (let i = 0; i < 10; i++) await call("POST", "/api/auth/request", { body: { email: `nobody${i}@example.com` }, headers: h });
+    const r = await call("POST", "/api/auth/request", { body: { email: A }, headers: h });
+    assert.equal(r.status, 429);
+    assert.match(r.data.error, /wait a minute/);
+    // Other people aren't affected.
+    assert.equal((await call("POST", "/api/auth/request", { body: { email: A }, headers: { "cf-connecting-ip": "198.51.100.2" } })).status, 200);
+  });
+
+  test("admins can see how many emails were sent this month", async () => {
+    const admin = await signIn(ADMIN);
+    await call("POST", "/api/auth/request", { body: { email: A } });
+    const s = (await call("GET", "/api/admin/settings", { token: admin })).data;
+    assert.deepEqual([s.emailsThisMonth, s.emailMonthlyLimit], [2, 200]); // the admin's own code + A's
   });
 });

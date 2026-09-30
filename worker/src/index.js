@@ -51,6 +51,30 @@ const routes = [
   re: new RegExp("^" + path.replace(/:(\w+)/g, "(?<$1>[^/]{1,200})") + "$"),
 }));
 
+// Protection against one visitor or script using up the free daily allowance for everyone.
+// Per-network counters live in the Worker's memory (no database writes). Best effort — each
+// Cloudflare location counts separately — but enough to stop a runaway script or bot.
+const BURST_PER_MINUTE = { public: 120, request: 10, verify: 20 };
+const hits = new Map();
+function burstBucket(path) {
+  if (path.startsWith("/api/public")) return "public";
+  if (path === "/api/auth/request") return "request";
+  if (path === "/api/auth/verify") return "verify";
+  return null;
+}
+function tooMany(req, bucket) {
+  const ip = req.headers.get("cf-connecting-ip");
+  if (!ip || !bucket) return false;
+  const now = Date.now(), key = `${bucket}|${ip}`;
+  let e = hits.get(key);
+  if (!e || now - e.t > 60e3) {
+    if (hits.size > 10000) hits.clear();
+    e = { n: 0, t: now };
+    hits.set(key, e);
+  }
+  return ++e.n > BURST_PER_MINUTE[bucket];
+}
+
 function allowedOrigin(req, env) {
   const origin = req.headers.get("origin");
   if (!origin) return { ok: true, value: null }; // not a browser cross-site call; auth still applies
@@ -91,7 +115,9 @@ export default {
     let res, user = null;
     try {
       const path = new URL(req.url).pathname.replace(/\/+$/, "") || "/";
-      if (path === "/" && req.method === "GET") {
+      if (tooMany(req, burstBucket(path))) {
+        res = json({ error: "Too many requests from your network. Please wait a minute and try again." }, 429, { "retry-after": "60" });
+      } else if (path === "/" && req.method === "GET") {
         res = json({ ok: true, service: "SCSM Calendar API" });
       } else {
         let match = null, pathMatched = false;
