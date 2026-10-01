@@ -1,7 +1,7 @@
 // The public front page: calendars an admin marked "Public", visible to anyone without signing in.
 
 import { api, apiFeed } from "./api.js";
-import { $, h, eventColors, fmtTime } from "./dom.js";
+import { $, h, eventColors, fmtTime, fill } from "./dom.js";
 import { parseIcs, expandIcs } from "./ics.js";
 
 const HIDDEN_KEY = "scsm_public_hidden";
@@ -36,7 +36,7 @@ export function initPublic({ openEvent }) {
 
   function renderChips() {
     const box = $("#pubCals");
-    box.replaceChildren(...info.calendars.map((c) => h("button", {
+    fill(box, ...info.calendars.map((c) => h("button", {
       type: "button", class: "chip", "aria-pressed": String(!hidden.has(c.id)), style: { "--c": c.color },
       onclick: () => { hidden.has(c.id) ? hidden.delete(c.id) : hidden.add(c.id); saveHidden(hidden); renderChips(); refresh(); },
     }, h("span", { class: "dot" }), c.name)));
@@ -47,7 +47,7 @@ export function initPublic({ openEvent }) {
     const box = $("#pubUpcoming");
     const cals = info.calendars.filter((c) => !hidden.has(c.id));
     if (!info.calendars.length) {
-      box.replaceChildren(h("div", { class: "card empty", style: { "grid-column": "1 / -1" } },
+      fill(box, h("div", { class: "card empty", style: { "grid-column": "1 / -1" } },
         h("h2", { text: "Nothing to show yet" }),
         h("p", { class: "muted", text: "Public events will appear here soon. SCSM staff can sign in for the full calendar." })));
       return;
@@ -66,11 +66,11 @@ export function initPublic({ openEvent }) {
     all.sort((a, b) => a.start - b.start);
     const next = all.slice(0, 8);
     if (!next.length) {
-      box.replaceChildren(h("div", { class: "card empty", style: { "grid-column": "1 / -1" } },
+      fill(box, h("div", { class: "card empty", style: { "grid-column": "1 / -1" } },
         h("h2", { text: "No upcoming events" }), h("p", { class: "muted", text: "Check back soon." })));
       return;
     }
-    box.replaceChildren(...next.map(({ c, o, start }) => {
+    fill(box, ...next.map(({ c, o, start }) => {
       const d = new Date(start);
       const time = o.allDay ? "All day" : `${fmtTime(new Date(o.start))} – ${fmtTime(new Date(o.end))}`;
       return h("button", {
@@ -128,7 +128,7 @@ export function initPublic({ openEvent }) {
       if (!info) {
         try { info = await api("/api/public"); }
         catch (err) {
-          $("#pubUpcoming").replaceChildren(h("div", { class: "notice error", style: { "grid-column": "1 / -1" } }, h("span", { text: err.message })));
+          fill($("#pubUpcoming"), h("div", { class: "notice error", style: { "grid-column": "1 / -1" } }, h("span", { text: err.message })));
           return;
         }
         $("#pubTagline").textContent = info.site.tagline;

@@ -22,6 +22,12 @@ export function h(tag, attrs = {}, ...children) {
   return el;
 }
 
+/** Replace an element's content, skipping empty (null/false) items — replaceChildren() would print them as "null". */
+export function fill(el, ...children) {
+  el.replaceChildren(...children.flat().filter((c) => c != null && c !== false));
+  return el;
+}
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 function svg(viewBox, parts) {
   const s = document.createElementNS(SVG_NS, "svg");

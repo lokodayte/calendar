@@ -97,7 +97,8 @@ export async function verifyCode(req, env) {
     // Housekeeping, done on sign-in (rare) rather than on every request.
     env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(now),
     env.DB.prepare("DELETE FROM login_codes WHERE code_hash = '' AND window_start < ?").bind(now - 864e5),
-    env.DB.prepare("DELETE FROM admin_log WHERE at < ?").bind(now - 2 * 365 * 864e5),
+    // Activity log: keep the last 90 days, and never more than 300 entries.
+    env.DB.prepare("DELETE FROM admin_log WHERE at < ? OR id <= (SELECT id FROM admin_log ORDER BY id DESC LIMIT 1 OFFSET 300)").bind(now - 90 * 864e5),
   ]);
   return json({ ok: true, token, email, role: person.role, expires });
 }

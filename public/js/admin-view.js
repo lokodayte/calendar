@@ -2,7 +2,7 @@
 // Visible only to admins; the Worker enforces this independently on every admin request.
 
 import { api } from "./api.js";
-import { h, toast, confirmDialog, busy, colorPicker, sourceIcon, SOURCES, fmtStamp } from "./dom.js";
+import { h, toast, confirmDialog, busy, colorPicker, sourceIcon, SOURCES, fmtStamp, fill } from "./dom.js";
 
 function detectSource(url) {
   const u = String(url || "").toLowerCase();
@@ -50,9 +50,10 @@ export function initAdmin(root, ctx) {
     const [st, cal, set, log] = await Promise.all([
       api("/api/admin/staff"), api("/api/admin/calendars"), api("/api/admin/settings"), api("/api/admin/log"),
     ]);
-    D.staff = st.staff; D.calendars = cal.calendars; D.settings = set; D.log = log.log;
+    D.staff = st.staff; D.calendars = cal.calendars; D.settings = set; D.log = log.log; D.logMore = log.more;
   }
-  const refreshLog = async () => { D.log = (await api("/api/admin/log")).log; renderLog(); };
+  let logLimit = 5;
+  const refreshLog = async () => { const r = await api(`/api/admin/log?limit=${logLimit}`); D.log = r.log; D.logMore = r.more; renderLog(); };
 
   /* ================= Staff ================= */
 
@@ -109,7 +110,7 @@ export function initAdmin(root, ctx) {
     search.addEventListener("input", () => { filter = search.value.trim(); draw(); });
     draw();
 
-    staffPanel.replaceChildren(
+    fill(staffPanel, 
       h("h2", { text: "People" }),
       h("p", { class: "muted sub", text: "Only people on this list can sign in — anyone else is told right away that it's for SCSM staff only. Admins can do everything here, including making other admins, but can't change super admins." }),
       form,
@@ -228,7 +229,7 @@ export function initAdmin(root, ctx) {
         h("button", { class: "btn small", type: "button", text: "Refresh now", title: "Pull the latest changes from the original calendar now", onclick: (e) => refreshCalendar(c, e.currentTarget) }),
         h("button", { class: "btn small", type: "button", text: "Edit", onclick: () => editCalendar(c) })));
     });
-    calPanel.replaceChildren(
+    fill(calPanel, 
       h("h2", { text: "Shared calendars" }),
       h("p", { class: "muted sub", text: "Choose who sees each one: anyone on the public front page, or only signed-in staff. The links stay on the server — nobody else ever sees them." }),
       D.calendars.length ? rows : h("p", { class: "muted", text: "No shared calendars yet. Add the Student Work Schedule, School Events, Club Events and Social Media." }),
@@ -287,7 +288,7 @@ export function initAdmin(root, ctx) {
         if (!body) { testOut.textContent = "Paste a link first."; return; }
         const r = await api("/api/admin/test-feed", { method: "POST", body });
         if (!r.ok) { testOut.className = "test-result bad"; testOut.textContent = r.error; return; }
-        testOut.replaceChildren(h("b", { text: `It works: found ${r.events} event${r.events === 1 ? "" : "s"}.` }));
+        fill(testOut, h("b", { text: `It works: found ${r.events} event${r.events === 1 ? "" : "s"}.` }));
         if (!sourceTouched) source.value = r.source;
         if (r.titles.length) {
           testOut.append(
@@ -365,7 +366,7 @@ export function initAdmin(root, ctx) {
         refreshLog();
       } catch (e2) { err.textContent = e2.message; err.hidden = false; }
     });
-    setPanel.replaceChildren(
+    fill(setPanel, 
       h("h2", { text: "Settings" }),
       field("Site title", title, "Shown at the top of every page, including the public front page."),
       field("Front page tagline", tagline, "The sentence under the title on the public front page."),
@@ -383,14 +384,23 @@ export function initAdmin(root, ctx) {
   /* ================= Log ================= */
 
   function renderLog() {
-    logPanel.replaceChildren(
-      h("h2", { text: "Recent activity" }),
+    // Compact: one line per change, newest first. Only the last 90 days are kept on the server.
+    const short = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const who = (email) => D.staff.find((p) => p.email === email)?.name?.split(" ")[0] || email.split("@")[0];
+    fill(logPanel, 
+      h("div", { class: "log-head" },
+        h("h2", { text: "Recent activity" }),
+        h("span", { class: "muted small", text: "last 90 days" })),
       D.log.length
-        ? h("ul", { class: "log" }, D.log.map((l) => h("li", {},
-          h("time", { text: fmtStamp(l.at) }),
-          h("span", { class: "grow" }, l.detail, h("br"), h("span", { class: "who", text: l.actor })))))
-        : h("p", { class: "muted", text: "Nothing yet. Changes made in this Admin tab are listed here." }));
+        ? h("ul", { class: "log compact" }, D.log.map((l) => h("li", { title: `${fmtStamp(l.at)} — ${l.actor}` },
+          h("time", { text: short(l.at) }),
+          h("span", { class: "who", text: who(l.actor) }),
+          h("span", { class: "what", text: l.detail }))))
+        : h("p", { class: "muted", text: "Nothing yet. Changes made in Admin are listed here." }),
+      D.logMore ? h("button", { class: "link", type: "button", text: logLimit < 50 ? "Show more" : "Show fewer", onclick: () => { logLimit = logLimit < 50 ? 50 : 5; refreshLog(); } })
+        : logLimit > 5 ? h("button", { class: "link", type: "button", text: "Show fewer", onclick: () => { logLimit = 5; refreshLog(); } }) : null);
   }
+
 
   return {
     async show() {

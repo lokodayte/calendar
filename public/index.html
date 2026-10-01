@@ -68,6 +68,7 @@
       </a>
       <nav class="tabs" role="tablist" aria-label="Views">
         <button role="tab" type="button" data-tab="calendar" aria-selected="true">Calendar</button>
+        <button role="tab" type="button" data-tab="suggest" aria-selected="false">Suggest<span class="hide-phone">ions</span> <span class="tab-badge" id="sugBadge" hidden></span></button>
         <button role="tab" type="button" data-tab="admin" aria-selected="false" hidden id="tabAdmin">Admin</button>
       </nav>
       <div class="menu-wrap">
@@ -98,6 +99,7 @@
           <p class="hello-name" id="helloName"></p>
         </div>
         <button class="btn primary wide" type="button" id="btnAddEvent">+ Add event</button>
+        <a class="btn wide suggest-link" href="#suggest">💡 Suggest an event for everyone</a>
         <div class="side-card">
           <h2 class="group">Shared calendars</h2>
           <ul class="cal-list" id="listShared"></ul>
@@ -114,6 +116,11 @@
         <div id="notices" class="notices" aria-live="polite"></div>
         <div class="card cal-card"><div id="calendar"></div></div>
       </div>
+    </section>
+
+    <!-- Suggestions -->
+    <section class="view view-suggest" data-view="suggest" hidden>
+      <div id="suggestRoot" class="suggest"></div>
     </section>
 
     <!-- Admin -->

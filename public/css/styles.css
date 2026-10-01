@@ -345,6 +345,33 @@ dialog::backdrop { background: rgba(34, 30, 51, .38); backdrop-filter: blur(3px)
 .log time { color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 136px; font-size: 13px; padding-top: 1px; }
 .log .who { color: var(--ink-3); font-size: 13px; }
 
+/* ---------- suggestions ---------- */
+.tab-badge { display: inline-grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px; margin-left: 4px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11.5px; font-weight: 700; line-height: 1; vertical-align: 1px; }
+.suggest-link { font-size: 14px; color: var(--ink-2); }
+.suggest { display: flex; flex-direction: column; gap: 18px; max-width: 860px; margin: 0 auto; }
+.suggest-form > div { display: flex; flex-direction: column; gap: 6px; }
+.suggest-form input[type=file] { padding: 8px; background: var(--bg); }
+.sug-inbox { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.sug-card { padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; box-shadow: none; background: var(--bg); }
+.sug-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.sug-title { font-size: 17px; }
+.sug-when { font-weight: 600; color: var(--accent-hover); font-size: 14.5px; }
+.sug-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
+.sug-file { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.sug-img { display: block; max-width: 100%; max-height: 320px; border-radius: 10px; border: 1px solid var(--line); }
+.sug-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.sug-mine { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.sug-mine:last-child { border-bottom: 0; }
+.pill.ok { background: #E3F5EC; color: #145C40; }
+.pill.no { background: var(--danger-bg); color: var(--danger); }
+
+/* compact activity list */
+.log-head { display: flex; align-items: baseline; gap: 10px; }
+.log.compact li { padding: 6px 0; gap: 10px; font-size: 13.5px; align-items: baseline; }
+.log.compact time { min-width: 52px; }
+.log.compact .who { font-weight: 600; color: var(--ink-2); min-width: 64px; white-space: nowrap; }
+.log.compact .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ---------- phones ---------- */
 @media (max-width: 820px) {
   :root { --top-h: 58px; }
@@ -369,7 +396,8 @@ dialog::backdrop { background: rgba(34, 30, 51, .38); backdrop-filter: blur(3px)
   .fc .fc-toolbar-chunk { display: flex; flex-wrap: wrap; gap: 4px; }
   .row2 { grid-template-columns: 1fr; }
   .self-end { padding-bottom: 0; }
-  .tbl .hide-phone { display: none; }
+  .tbl .hide-phone, .tabs .hide-phone { display: none; }
+  .sug-mine { flex-wrap: wrap; }
   .tbl td.actions { white-space: normal; }
   .tbl td.actions .btn { margin: 2px 0 2px 4px; }
   .panel { padding: 18px 16px; }

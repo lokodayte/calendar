@@ -6,6 +6,7 @@ import { devMode } from "./settings.js";
 import { authenticate, requestCode, verifyCode, signOut } from "./auth.js";
 import * as me from "./personal.js";
 import * as admin from "./admin.js";
+import * as sug from "./suggestions.js";
 
 const routes = [
   ["POST", "/api/auth/request", "public", requestCode],
@@ -29,6 +30,13 @@ const routes = [
   ["DELETE", "/api/my-feeds/:id", "user", me.deleteMyFeed],
   ["POST", "/api/my-feeds/:id/refresh", "user", me.refreshMyFeed],
 
+  ["GET", "/api/suggestions/mine", "user", sug.mySuggestions],
+  ["POST", "/api/suggestions", "user", sug.createSuggestion],
+  ["DELETE", "/api/suggestions/:id", "user", sug.withdrawSuggestion],
+
+  ["GET", "/api/admin/suggestions", "admin", sug.pendingSuggestions],
+  ["GET", "/api/admin/suggestions/:id/file", "admin", sug.suggestionFile],
+  ["POST", "/api/admin/suggestions/:id/decide", "admin", sug.decideSuggestion],
   ["GET", "/api/admin/staff", "admin", admin.listStaff],
   ["POST", "/api/admin/staff", "admin", admin.addStaff],
   ["PUT", "/api/admin/staff/:email", "admin", admin.updatePerson],

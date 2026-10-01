@@ -261,7 +261,14 @@ Everything is done in the **Admin** tab. Every change is recorded under **Recent
 | Keep a calendar for signed-in staff only | Set **Who can see it** to **Staff only** (the default for new calendars). |
 | Change the order in the sidebar | Use the ▲ ▼ arrows. |
 | Change the site title or front-page text | **Settings**. |
+| Review event suggestions | **Suggestions** tab (the red number shows how many are waiting). Add the event where it belongs — **Download for Outlook (.ics)** imports it in one step — then click **✓ Added** or **Not added**, with an optional note. |
 | Add another super admin | Edit `SUPERADMIN_EMAILS` in `wrangler.toml` on GitHub. It's live after the automatic deploy. |
+
+### Suggestions
+
+Anyone signed in can open **Suggestions** (or click **💡 Suggest an event for everyone** in the sidebar) and send the admins an event that's missing: title, date and time, location, host, details, a link, and optionally a **flyer photo or PDF**. Photos are shrunk in the browser before upload; PDFs can be up to 1.2 MB.
+
+When an admin marks a suggestion **Added** or **Not added**, its details and attached file are **deleted right away**. The person who suggested it sees a one-line result (with the admin's note) for 30 days, after which that's deleted too. Limits keep it small: 5 waiting suggestions per person, 10 per hour, 300 waiting in total.
 
 **Events themselves** are still edited in Outlook, Google or calendar.online as usual. The website picks up changes within about 5 minutes, or right away with **Admin → Shared calendars → Refresh now**. The original service can add its own delay: Outlook's published links can take up to about 30 minutes to show a change.
 
@@ -276,7 +283,8 @@ Everything is done in the **Admin** tab. Every change is recorded under **Recent
 2. Use the switches on the left to show or hide calendars. On a phone, tap ☰. Your choices are saved for all your devices.
 3. **+ Add event** creates a private event that only you can see.
 4. **+ Add my Outlook or Google calendar** shows your own calendar here as well. It's private to you.
-5. Click any event to see where it comes from (for example, "From Outlook — SchoolCSM Events").
+5. Something missing? Open **Suggestions**, fill in the event (you can attach the flyer), and send it. You'll see ✓ Added or ✗ Not added there once an admin has looked at it.
+6. Click any event to see where it comes from (for example, "From Outlook — SchoolCSM Events").
 
 ---
 
@@ -290,7 +298,7 @@ Measured on the live site. Check each provider's current limits now and then, be
 | **Cloudflare Workers** (the helper) | 100,000 requests/day | Public page: 1 + one per public calendar. Signed-in: ~2 + one per calendar shown | **~25,000–50,000 visits a day** |
 | **D1 reads** (the database) | 5 million rows/day | ~5–20 rows | not a real limit |
 | **D1 writes** | 100,000 rows/day | A calendar is re-checked at most every 5 minutes (≤288 a day, only while someone is looking); unchanged calendars aren't re-saved | **~12,000/day even with 40 busy calendars** |
-| **D1 storage** | 5 GB | — | under 50 MB |
+| **D1 storage** | 5 GB | Suggestions with files are deleted as soon as they're handled; at most 300 can wait at once (≈0.5 GB worst case) | usually under 50 MB |
 | **EmailJS** (sign-in codes) | **200 emails/month** | 1 per new device sign-in | **The tightest limit** — see Admin → Settings for this month's count |
 | **GitHub Actions** | unlimited for public repos | ~2 min per push | — |
 
@@ -301,6 +309,7 @@ A school department checking the site all day is **a few percent** of these limi
 - **No re-saving unchanged calendars.** When a calendar is re-checked and nothing changed, only the check time is noted.
 - **Only what's needed is downloaded.** The sign-in logo loads only when someone opens sign-in; the Admin page's code loads only for admins who open it. The logos are compressed JPEGs cached for a week. FullCalendar, ical.js and the fonts come from free public CDNs, which don't count.
 - **Protection against runaway traffic.** One network making an unreasonable number of requests (e.g. a broken script or a bot) is briefly slowed down — per minute: 120 public-page requests, 10 code requests, 20 code checks — so it can't use up the day's allowance for everyone. This uses the helper's memory, not the database.
+- **Suggestions clean up after themselves.** Files and details are deleted at the moment of a decision; one-line results after 30 days. The activity log keeps only 90 days (at most 300 entries) and shows 5 at a time.
 - **Few database steps per click.** Pasting 200 people saves in 10 steps; D1's free plan allows 50 per request, and the tests enforce the same limits.
 
 ---

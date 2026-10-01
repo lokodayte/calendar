@@ -5,6 +5,7 @@ import { fail, json, readJson } from "./lib/http.js";
 import * as v from "./lib/validate.js";
 import { LIMITS, getSettings, devMode, ROLE_LABEL } from "./settings.js";
 import { detectSource, downloadIcs, dropCache, feedResponse, getFeed, summarizeIcs } from "./feeds.js";
+import { pendingCount } from "./suggestions.js";
 
 const addDaysIso = (date, n) => new Date(Date.parse(date + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 
@@ -35,6 +36,7 @@ export async function bootstrap(req, env, ctx, user) {
     calendars: cals.results.map(sharedPublic),
     myFeeds: feeds.results.map(feedPublic),
     visible,
+    pendingSuggestions: user.isAdmin ? await pendingCount(env) : 0,
   });
 }
 

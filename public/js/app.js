@@ -559,18 +559,36 @@ async function loadAdmin() {
   return adminView;
 }
 
+let suggestView = null;
+async function loadSuggest() {
+  if (!suggestView) {
+    const { initSuggest } = await import("./suggest-view.js");
+    suggestView = suggestView || initSuggest($("#suggestRoot"), ctx);
+  }
+  return suggestView;
+}
+
+/** The number on the Suggestions tab (admins only): how many are waiting for review. */
+function setPending(n) {
+  S.pendingSuggestions = n;
+  const b = $("#sugBadge");
+  b.textContent = String(n);
+  b.hidden = !(S.me?.isAdmin && n > 0);
+}
+
 function showTab(tab) {
   if (tab === "public") { showPublic(); return; }
   $("#public").hidden = true;
   $("#app").hidden = false;
   if (tab === "admin" && !S.me?.isAdmin) tab = "calendar";
-  if (!["calendar", "admin"].includes(tab)) tab = "calendar";
+  if (!["calendar", "suggest", "admin"].includes(tab)) tab = "calendar";
   S.tab = tab;
   for (const b of $$(".tabs [role=tab]")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
   for (const v of $$(".view")) v.hidden = v.dataset.view !== tab;
   $("#btnDrawer").style.visibility = tab === "calendar" ? "" : "hidden";
   if (tab === "calendar" && S.fc) S.fc.updateSize();
   if (tab === "admin") loadAdmin().then((v) => v.show(), (err) => toast(`Couldn't open Admin: ${err.message}`));
+  if (tab === "suggest") loadSuggest().then((v) => v.show(), (err) => toast(`Couldn't open Suggestions: ${err.message}`));
   if (location.hash.slice(1) !== tab) history.replaceState(null, "", `#${tab}`);
 }
 for (const b of $$(".tabs [role=tab]")) b.onclick = () => showTab(b.dataset.tab);
@@ -619,6 +637,7 @@ async function reload() {
   }
   document.title = S.site.title;
   $("#tabAdmin").hidden = !S.me.isAdmin;
+  setPending(data.pendingSuggestions || 0);
   $("#devBanner").hidden = !S.site.devMode;
   const first = (S.me.name || "").split(" ")[0] || S.me.email.split(/[@._]/)[0];
   const nice = first.charAt(0).toUpperCase() + first.slice(1);
@@ -639,6 +658,7 @@ const ctx = {
   get state() { return S; },
   loadFeed,
   reload,
+  setPending,
 };
 
 async function start() {

@@ -8,7 +8,7 @@ import { refreshNow } from "./personal.js";
 import { sendEmail, welcomeEmail, emailProvider, pauseBetweenEmails, noteEmailStatus, countEmail, MONTHLY_EMAIL_LIMIT, emailMonthKey } from "./email.js";
 
 const logStmt = (env, actor, action, detail) =>
-  env.DB.prepare("INSERT INTO admin_log (at, actor, action, detail) VALUES (?, ?, ?, ?)").bind(Date.now(), actor, action, String(detail).slice(0, 1000));
+  env.DB.prepare("INSERT INTO admin_log (at, actor, action, detail) VALUES (?, ?, ?, ?)").bind(Date.now(), actor, action, String(detail).slice(0, 300));
 
 const list = (xs, max = 5) => (xs.length > max ? `${xs.slice(0, max).join(", ")} and ${xs.length - max} more` : xs.join(", "));
 
@@ -308,7 +308,9 @@ export async function saveAdminSettings(req, env, ctx, user) {
   return getAdminSettings(req, env);
 }
 
+/** GET /api/admin/log?limit=5 — newest first. Only the last 90 days (max 300 entries) are kept. */
 export async function getLog(req, env) {
-  const { results } = await env.DB.prepare("SELECT at, actor, action, detail FROM admin_log ORDER BY at DESC, id DESC LIMIT 100").all();
-  return json({ log: results });
+  const limit = Math.min(100, Math.max(1, parseInt(new URL(req.url).searchParams.get("limit"), 10) || 5));
+  const { results } = await env.DB.prepare("SELECT at, actor, action, detail FROM admin_log ORDER BY at DESC, id DESC LIMIT ?").bind(limit + 1).all();
+  return json({ log: results.slice(0, limit), more: results.length > limit });
 }

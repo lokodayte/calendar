@@ -849,3 +849,98 @@ describe("staying within the free plan under heavy use", () => {
     assert.deepEqual([s.emailsThisMonth, s.emailMonthlyLimit], [2, 200]); // the admin's own code + A's
   });
 });
+
+describe("event suggestions", () => {
+  const PNG = "data:image/png;base64," + Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...Array(200).fill(7)]).toString("base64");
+  const suggestion = (over = {}) => ({ title: "Math Dept Friday Symposium", date: "2026-10-16", startTime: "15:00", endTime: "16:00", location: "Hancock 2023", host: "Math Department", details: "Student panel.", ...over });
+
+  test("staff suggest an event with a flyer; admins see it; deciding deletes the file and details at once", async () => {
+    const a = await signIn(A);
+    const admin = await signIn(ADMIN);
+    const r = await call("POST", "/api/suggestions", { token: a, body: suggestion({ file: { name: "flyer.png", data: PNG } }) });
+    assert.equal(r.status, 201, JSON.stringify(r.data));
+    assert.deepEqual(r.data.suggestion.file, { name: "flyer.png", type: "image/png", size: 208 });
+    assert.equal((await call("GET", "/api/bootstrap", { token: admin })).data.pendingSuggestions, 1);
+    const inbox = (await call("GET", "/api/admin/suggestions", { token: admin })).data.suggestions;
+    assert.equal(inbox[0].by.email, A);
+    const file = await call("GET", `/api/admin/suggestions/${inbox[0].id}/file`, { token: admin });
+    assert.equal(file.data.data, PNG);
+
+    const d = await call("POST", `/api/admin/suggestions/${inbox[0].id}/decide`, { token: admin, body: { decision: "added", note: "Added to SchoolCSM Events" } });
+    assert.equal(d.status, 200);
+    assert.equal(env.DB.q("SELECT COUNT(*) AS n FROM suggestion_files")[0].n, 0, "file deleted");
+    const [row] = env.DB.q("SELECT details, location, file_name FROM suggestions");
+    assert.deepEqual([row.details, row.location, row.file_name], ["", "", null], "details cleared");
+    const mine = (await call("GET", "/api/suggestions/mine", { token: a })).data.suggestions;
+    assert.deepEqual([mine[0].status, mine[0].note, mine[0].title], ["added", "Added to SchoolCSM Events", "Math Dept Friday Symposium"]);
+    assert.equal((await call("GET", "/api/admin/suggestions", { token: admin })).data.suggestions.length, 0);
+    assert.match((await call("GET", "/api/admin/log", { token: admin })).data.log[0].detail, /Added suggestion “Math Dept Friday Symposium”/);
+    // A second admin acting on the same suggestion is told it's already handled.
+    assert.equal((await call("POST", `/api/admin/suggestions/${inbox[0].id}/decide`, { token: admin, body: { decision: "rejected" } })).status, 404);
+  });
+
+  test("people only see their own suggestions; staff can't use the admin inbox", async () => {
+    const a = await signIn(A);
+    const b = await signIn(B);
+    const id = (await call("POST", "/api/suggestions", { token: a, body: suggestion() })).data.suggestion.id;
+    assert.deepEqual((await call("GET", "/api/suggestions/mine", { token: b })).data.suggestions, []);
+    assert.equal((await call("DELETE", `/api/suggestions/${id}`, { token: b })).status, 404);
+    for (const [m, p] of [["GET", "/api/admin/suggestions"], ["GET", `/api/admin/suggestions/${id}/file`], ["POST", `/api/admin/suggestions/${id}/decide`]]) {
+      assert.equal((await call(m, p, { token: b, body: m === "POST" ? { decision: "added" } : undefined })).status, 403, p);
+    }
+    assert.equal((await call("DELETE", `/api/suggestions/${id}`, { token: a })).status, 200, "withdraw your own");
+  });
+
+  test("files must really be a photo or PDF, and not too big", async () => {
+    const a = await signIn(A);
+    const bad = [
+      { name: "x.html", data: "data:text/html;base64," + Buffer.from("<script>alert(1)</script>").toString("base64") },
+      { name: "fake.png", data: "data:image/png;base64," + Buffer.from("<svg onload=alert(1)>").toString("base64") },
+      { name: "big.pdf", data: "data:application/pdf;base64," + Buffer.concat([Buffer.from("%PDF-1.4"), Buffer.alloc(1_300_000)]).toString("base64") },
+    ];
+    for (const file of bad) {
+      const r = await call("POST", "/api/suggestions", { token: a, body: suggestion({ file }) });
+      assert.equal(r.status, 400, file.name);
+    }
+    assert.equal(env.DB.q("SELECT COUNT(*) AS n FROM suggestions")[0].n, 0);
+  });
+
+  test("limits keep storage small: 5 waiting per person", async () => {
+    const a = await signIn(A);
+    for (let i = 0; i < 5; i++) assert.equal((await call("POST", "/api/suggestions", { token: a, body: suggestion({ title: `Event ${i}` }) })).status, 201);
+    const sixth = await call("POST", "/api/suggestions", { token: a, body: suggestion() });
+    assert.equal(sixth.status, 400);
+    assert.match(sixth.data.error, /5 suggestions waiting/);
+  });
+
+  test("receipts disappear by themselves after 30 days", async () => {
+    const a = await signIn(A);
+    const admin = await signIn(ADMIN);
+    const id = (await call("POST", "/api/suggestions", { token: a, body: suggestion() })).data.suggestion.id;
+    await call("POST", `/api/admin/suggestions/${id}/decide`, { token: admin, body: { decision: "rejected", note: "Already on the calendar" } });
+    env.DB.q("UPDATE suggestions SET decided_at = ?", Date.now() - 31 * 864e5);
+    assert.deepEqual((await call("GET", "/api/suggestions/mine", { token: a })).data.suggestions, []);
+    assert.equal(env.DB.q("SELECT COUNT(*) AS n FROM suggestions")[0].n, 0);
+  });
+
+  test("bad input is refused", async () => {
+    const a = await signIn(A);
+    for (const body of [suggestion({ title: "" }), suggestion({ date: "2026-13-01" }), suggestion({ startTime: "16:00", endTime: "15:00" }), suggestion({ link: "javascript:alert(1)" })]) {
+      assert.equal((await call("POST", "/api/suggestions", { token: a, body })).status, 400, JSON.stringify(body));
+    }
+  });
+});
+
+describe("activity log stays small", () => {
+  test("shows 5 entries by default, more on request; old entries are cleaned up", async () => {
+    const admin = await signIn(ADMIN);
+    const now = Date.now();
+    for (let i = 0; i < 8; i++) env.DB.q("INSERT INTO admin_log (at, actor, action, detail) VALUES (?, ?, 'x', ?)", now - i * 1000, ADMIN, `entry ${i}`);
+    env.DB.q("INSERT INTO admin_log (at, actor, action, detail) VALUES (?, ?, 'x', 'ancient')", now - 100 * 864e5, ADMIN);
+    const first = (await call("GET", "/api/admin/log", { token: admin })).data;
+    assert.deepEqual([first.log.length, first.more], [5, true]);
+    assert.equal((await call("GET", "/api/admin/log?limit=50", { token: admin })).data.log.length, 9);
+    await signIn(A); // sign-ins do the housekeeping
+    assert.equal(env.DB.q("SELECT COUNT(*) AS n FROM admin_log WHERE detail = 'ancient'")[0].n, 0);
+  });
+});
