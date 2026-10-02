@@ -944,3 +944,45 @@ describe("activity log stays small", () => {
     assert.equal(env.DB.q("SELECT COUNT(*) AS n FROM admin_log WHERE detail = 'ancient'")[0].n, 0);
   });
 });
+
+describe("hiding events by label", () => {
+  const LABELED = [
+    "BEGIN:VCALENDAR", "VERSION:2.0",
+    "BEGIN:VEVENT", "UID:a", "DTSTART:20261001T160000Z", "DTEND:20261001T170000Z", "SUMMARY:Computer Society Regular Meet", "CATEGORIES:Club Meeting", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:b", "DTSTART:20261001T150000Z", "DTEND:20261001T160000Z", "SUMMARY:Computer Society Board Meet", "CATEGORIES:Club Meeting,Operations", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:c", "DTSTART:20261021T150000Z", "DTEND:20261021T160000Z", "SUMMARY:Faculty: School Meeting", "CATEGORIES:SCSM", "CATEGORIES:operations", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:d", "DTSTART;VALUE=DATE:20261016", "SUMMARY:Fall Recess", "CATEGORIES:Holiday / Day Off", "END:VEVENT",
+    "END:VCALENDAR", "",
+  ].join("\r\n");
+  const url = "https://export.calendar.online/ics/0/abc/all.ics";
+
+  test("Test link lists the labels; a public calendar can hide 'Operations' (any letter case, any number of labels)", async () => {
+    feeds.set(url, LABELED);
+    const admin = await signIn(ADMIN);
+    const t = await call("POST", "/api/admin/test-feed", { token: admin, body: { url } });
+    assert.deepEqual(t.data.labels.map((l) => [l.name, l.count]).sort(), [["Club Meeting", 2], ["Holiday / Day Off", 1], ["Operations", 1], ["SCSM", 1], ["operations", 1]].sort());
+    const cal = (await call("POST", "/api/admin/calendars", { token: admin, body: { name: "Club & School Events", color: "#C8102E", url, audience: "public", hideLabels: ["Operations"] } })).data.calendar;
+    assert.deepEqual(cal.hideLabels, ["Operations"]);
+    const pub = await call("GET", `/api/public/feeds/${cal.id}`);
+    assert.match(pub.text, /Regular Meet/);
+    assert.match(pub.text, /Fall Recess/);
+    assert.doesNotMatch(pub.text, /Board Meet/);
+    assert.doesNotMatch(pub.text, /Faculty: School Meeting/);
+    assert.match(pub.text, /^BEGIN:VCALENDAR[\s\S]*END:VCALENDAR\s*$/);
+  });
+
+  test("changing the filter takes effect right away, without waiting for the 5-minute copy", async () => {
+    feeds.set(url, LABELED);
+    const admin = await signIn(ADMIN);
+    const cal = (await call("POST", "/api/admin/calendars", { token: admin, body: { name: "All", color: "#111111", url, hideLabels: ["Operations"] } })).data.calendar;
+    assert.doesNotMatch((await call("GET", `/api/feeds/shared/${cal.id}`, { token: admin })).text, /Board Meet/);
+    await call("PUT", `/api/admin/calendars/${cal.id}`, { token: admin, body: { hideLabels: [] } });
+    assert.match((await call("GET", `/api/feeds/shared/${cal.id}`, { token: admin })).text, /Board Meet/);
+    const log = (await call("GET", "/api/admin/log", { token: admin })).data.log;
+    assert.match(log[0].detail, /shows all labels/);
+    // Other fields don't reset the filter.
+    await call("PUT", `/api/admin/calendars/${cal.id}`, { token: admin, body: { hideLabels: ["Operations"] } });
+    await call("PUT", `/api/admin/calendars/${cal.id}`, { token: admin, body: { name: "Renamed" } });
+    assert.deepEqual((await call("GET", "/api/admin/calendars", { token: admin })).data.calendars[0].hideLabels, ["Operations"]);
+  });
+});

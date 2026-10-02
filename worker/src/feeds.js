@@ -98,9 +98,11 @@ export async function downloadIcs(env, url) {
  * Fresh copies come from the cache for CACHE_MINUTES; if the source is down, the last good copy is returned with stale=true.
  * force = true skips the cache ("Refresh now").
  */
-export async function getFeed(env, ctx, key, url, { force = false } = {}) {
+export async function getFeed(env, ctx, key, url, { force = false, hideLabels = [] } = {}) {
   const now = Date.now();
-  const urlHash = await sha256(url);
+  // The saved copy is the filtered one, so filtering costs nothing per visit. Changing the
+  // filter changes this hash, which makes the next request download and filter again.
+  const urlHash = await sha256(hideLabels.length ? `${url}|hide:${hideLabels.join("|").toLowerCase()}` : url);
   const row = await env.DB.prepare("SELECT url_hash, body, fetched_at, checked_at, last_error FROM feed_cache WHERE key = ?").bind(key).first();
   const sameUrl = row && row.url_hash === urlHash;
   const cached = sameUrl && row.body ? row : null;
@@ -115,7 +117,7 @@ export async function getFeed(env, ctx, key, url, { force = false } = {}) {
 
   const save = (p) => (ctx && ctx.waitUntil ? ctx.waitUntil(p) : p);
   try {
-    const text = await downloadIcs(env, url);
+    const text = hideLabeled(await downloadIcs(env, url), hideLabels);
     const body = await packBody(text);
     if (sameUrl && row.body === body) {
       // Nothing changed: just note that we checked. Keeps the "version" (fetched_at) the same,
@@ -170,7 +172,27 @@ export function feedResponse(result, req, cacheControl = "private, no-cache") {
   return new Response(result.text, { headers });
 }
 
-/** Unique event titles and a count, for the admin "Test link" button. */
+/** Labels (ICS CATEGORIES) of one unfolded VEVENT block. */
+function labelsOf(unfoldedEvent) {
+  const out = [];
+  for (const m of unfoldedEvent.matchAll(/^CATEGORIES(?:;[^:\r\n]*)?:(.*?)\r?$/gim)) {
+    for (const part of m[1].split(/(?<!\\),/)) {
+      const label = part.replace(/\\(.)/g, "$1").trim();
+      if (label) out.push(label);
+    }
+  }
+  return out;
+}
+
+/** Remove events carrying any of the hidden labels (case-insensitive). Everything else is kept as is. */
+export function hideLabeled(text, hideLabels = []) {
+  if (!hideLabels.length) return text;
+  const hide = new Set(hideLabels.map((l) => l.toLowerCase()));
+  return text.replace(/BEGIN:VEVENT\r?\n[\s\S]*?END:VEVENT\r?\n?/g, (block) =>
+    (labelsOf(block.replace(/\r?\n[ \t]/g, "")).some((l) => hide.has(l.toLowerCase())) ? "" : block));
+}
+
+/** Unique event titles, a count, and the labels used (with counts), for the admin "Test link" button. */
 export function summarizeIcs(text) {
   const unfolded = text.replace(/\r?\n[ \t]/g, "");
   const events = (unfolded.match(/^BEGIN:VEVENT/gim) || []).length;
@@ -180,5 +202,9 @@ export function summarizeIcs(text) {
     if (t) titles.add(t);
     if (titles.size >= 40) break;
   }
-  return { events, titles: [...titles] };
+  const labels = new Map();
+  for (const block of unfolded.match(/^BEGIN:VEVENT[\s\S]*?^END:VEVENT/gim) || []) {
+    for (const l of new Set(labelsOf(block))) labels.set(l, (labels.get(l) || 0) + 1);
+  }
+  return { events, titles: [...titles], labels: [...labels].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count) };
 }

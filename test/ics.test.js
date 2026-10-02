@@ -94,6 +94,12 @@ describe("reading calendar feeds", () => {
     const occ = expandIcs(parseIcs(ICAL, text), Date.parse("2026-11-01"), Date.parse("2026-11-04"));
     assert.equal(new Date(occ[0].start).toISOString(), "2026-11-02T14:00:00.000Z");
   });
+
+  test("an event's labels (CATEGORIES) come through, including several on one line", () => {
+    const text = cal(`BEGIN:VEVENT\nUID:l@test\nDTSTAMP:20260901T000000Z\nDTSTART;VALUE=DATE:20261016\nSUMMARY:Fall Recess\nCATEGORIES:Holiday / Day Off,University Wide\nCATEGORIES:SCSM\nEND:VEVENT`);
+    const [o] = expandIcs(parseIcs(ICAL, text), Date.parse("2026-10-15"), Date.parse("2026-10-18"));
+    assert.deepEqual(o.labels, ["Holiday / Day Off", "University Wide", "SCSM"]);
+  });
 });
 
 describe("time zone helpers", () => {

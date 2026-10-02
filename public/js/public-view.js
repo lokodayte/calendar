@@ -31,7 +31,7 @@ export function initPublic({ openEvent }) {
     end: o.allDay ? o.endDate : new Date(o.end),
     allDay: o.allDay,
     ...eventColors(cal.color),
-    extendedProps: { kind: "public", cal, color: cal.color, location: o.location, description: o.description },
+    extendedProps: { kind: "public", cal, color: cal.color, location: o.location, description: o.description, labels: o.labels },
   });
 
   function renderChips() {

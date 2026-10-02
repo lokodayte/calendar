@@ -365,6 +365,10 @@ dialog::backdrop { background: rgba(34, 30, 51, .38); backdrop-filter: blur(3px)
 .pill.ok { background: #E3F5EC; color: #145C40; }
 .pill.no { background: var(--danger-bg); color: var(--danger); }
 
+.label-box { display: flex; flex-direction: column; gap: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.label-ticks { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.ev-labels { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 2px; }
+
 /* compact activity list */
 .log-head { display: flex; align-items: baseline; gap: 10px; }
 .log.compact li { padding: 6px 0; gap: 10px; font-size: 13.5px; align-items: baseline; }

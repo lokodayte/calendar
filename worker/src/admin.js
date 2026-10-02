@@ -4,7 +4,7 @@ import { fail, json, readJson } from "./lib/http.js";
 import * as v from "./lib/validate.js";
 import { LIMITS, getSettings, devMode, isSuperAdmin, superAdmins, personFromRow, ROLES, ROLE_LABEL } from "./settings.js";
 import { detectSource, downloadIcs, dropCache, summarizeIcs } from "./feeds.js";
-import { refreshNow } from "./personal.js";
+import { refreshNow, hiddenLabels } from "./personal.js";
 import { sendEmail, welcomeEmail, emailProvider, pauseBetweenEmails, noteEmailStatus, countEmail, MONTHLY_EMAIL_LIMIT, emailMonthKey } from "./email.js";
 
 const logStmt = (env, actor, action, detail) =>
@@ -160,8 +160,14 @@ const AUD_LABEL = { public: "public", staff: "staff only" };
 
 const calOut = (c) => ({
   id: c.id, name: c.name, color: c.color, url: c.url, source: c.source, owner: c.owner,
-  defaultOn: !!c.default_on, sortOrder: c.sort_order, audience: c.audience,
+  defaultOn: !!c.default_on, sortOrder: c.sort_order, audience: c.audience, hideLabels: hiddenLabels(c),
 });
+
+function labelsIn(list) {
+  if (list == null) return [];
+  if (!Array.isArray(list) || list.length > 20) fail(400, "Invalid label choice.");
+  return [...new Set(list.map((l) => v.text(l, "Label", 60)).filter(Boolean))];
+}
 
 function calIn(env, body) {
   const url = v.feedUrl(body.url, { allowSamples: devMode(env) });
@@ -173,6 +179,7 @@ function calIn(env, body) {
     owner: v.text(body.owner, "Owner or contact", 120),
     defaultOn: body.defaultOn === undefined ? true : v.bool(body.defaultOn),
     audience: body.audience === "public" ? "public" : "staff",
+    hideLabels: labelsIn(body.hideLabels),
   };
 }
 
@@ -187,9 +194,9 @@ export async function createCalendar(req, env, ctx, user) {
   if (n.n >= LIMITS.MAX_CALENDARS) fail(400, `Up to ${LIMITS.MAX_CALENDARS} shared calendars.`);
   const now = Date.now();
   const row = await env.DB.prepare(
-    `INSERT INTO calendars (name, color, url, source, owner, default_on, audience, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
-  ).bind(c.name, c.color, c.url, c.source, c.owner, c.defaultOn ? 1 : 0, c.audience, n.maxo + 1, now, now).first();
+    `INSERT INTO calendars (name, color, url, source, owner, default_on, audience, hide_labels, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+  ).bind(c.name, c.color, c.url, c.source, c.owner, c.defaultOn ? 1 : 0, c.audience, JSON.stringify(c.hideLabels), n.maxo + 1, now, now).first();
   await logStmt(env, user.email, "calendar.add", `Added calendar “${c.name}” (${AUD_LABEL[c.audience]})`).run();
   return json({ calendar: calOut(row) }, 201);
 }
@@ -208,10 +215,11 @@ export async function updateCalendar(req, env, ctx, user, params) {
   if (c.owner !== cur.owner) changed.push("owner");
   if (c.defaultOn !== !!cur.default_on) changed.push(c.defaultOn ? "on by default" : "off by default");
   if (c.audience !== cur.audience) changed.push(`who can see it → ${AUD_LABEL[c.audience]}`);
+  if (JSON.stringify(c.hideLabels) !== JSON.stringify(hiddenLabels(cur))) changed.push(c.hideLabels.length ? `hides labels: ${c.hideLabels.join(", ")}` : "shows all labels");
   const stmts = [env.DB.prepare(
-    `UPDATE calendars SET name = ?, color = ?, url = ?, source = ?, owner = ?, default_on = ?, audience = ?, updated_at = ?
+    `UPDATE calendars SET name = ?, color = ?, url = ?, source = ?, owner = ?, default_on = ?, audience = ?, hide_labels = ?, updated_at = ?
      WHERE id = ? RETURNING *`,
-  ).bind(c.name, c.color, c.url, c.source, c.owner, c.defaultOn ? 1 : 0, c.audience, Date.now(), id)];
+  ).bind(c.name, c.color, c.url, c.source, c.owner, c.defaultOn ? 1 : 0, c.audience, JSON.stringify(c.hideLabels), Date.now(), id)];
   if (c.url !== cur.url) stmts.push(dropCache(env, `shared:${id}`));
   if (changed.length) stmts.push(logStmt(env, user.email, "calendar.edit", `Edited “${cur.name}”: ${changed.join(", ")}`));
   const [res] = await env.DB.batch(stmts);
@@ -244,9 +252,9 @@ export async function reorderCalendars(req, env, ctx, user) {
 
 /** POST /api/admin/calendars/:id/refresh — pull the latest version now instead of waiting for the next refresh. */
 export async function refreshCalendar(req, env, ctx, user, params) {
-  const cal = await env.DB.prepare("SELECT id, name, url FROM calendars WHERE id = ?").bind(v.id(params.id)).first();
+  const cal = await env.DB.prepare("SELECT id, name, url, hide_labels FROM calendars WHERE id = ?").bind(v.id(params.id)).first();
   if (!cal) fail(404, "That calendar was removed.");
-  return refreshNow(env, ctx, `shared:${cal.id}`, cal.url, cal.name);
+  return refreshNow(env, ctx, `shared:${cal.id}`, cal.url, cal.name, { hideLabels: hiddenLabels(cal) });
 }
 
 /** POST {url} or {id} — fetch now and report what's in it. */
@@ -263,7 +271,7 @@ export async function testFeed(req, env) {
   try {
     const text = await downloadIcs(env, url);
     const s = summarizeIcs(text);
-    return json({ ok: true, events: s.events, titles: s.titles, source: detectSource(url) });
+    return json({ ok: true, events: s.events, titles: s.titles, labels: s.labels, source: detectSource(url) });
   } catch (err) {
     return json({ ok: false, error: `Couldn't read that link: ${err.message}.` });
   }

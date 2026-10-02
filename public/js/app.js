@@ -1,7 +1,7 @@
 // SCSM Calendar — main app: sign-in, calendar view, sidebar toggles, event details and editors.
 
 import { api, apiFeed, getToken, setToken, clearToken, whenSignedOut, apiConfigured } from "./api.js";
-import { $, $$, h, toast, setErr, confirmDialog, busy, colorPicker, sourceIcon, SOURCES, fmtDate, fmtTime, linkify, eventColors } from "./dom.js";
+import { $, $$, h, toast, setErr, confirmDialog, busy, colorPicker, sourceIcon, SOURCES, fmtDate, fmtTime, linkify, eventColors, fill } from "./dom.js";
 import { TZ, zonedToUtc, parseHm, addDays, ymd } from "./tz.js";
 import { parseIcs, expandIcs } from "./ics.js";
 import { initPublic } from "./public-view.js";
@@ -298,7 +298,7 @@ function feedSource(key) {
           end: o.allDay ? o.endDate : new Date(o.end),
           allDay: o.allDay,
           ...eventColors(cal.color),
-          extendedProps: { kind: cal.kind, cal, color: cal.color, location: o.location, description: o.description },
+          extendedProps: { kind: cal.kind, cal, color: cal.color, location: o.location, description: o.description, labels: o.labels },
         })));
       }, () => ok([]));
     },
@@ -352,6 +352,7 @@ function openEvent(ev) {
   $("#evStripe").style.setProperty("--c", color);
   $("#evSwatch").style.setProperty("--c", color);
   $("#evTitle").textContent = ev.title;
+  fill($("#evLabels"), (p.labels || []).map((l) => h("span", { class: "pill", text: l })));
   $("#evWhen").textContent = whenText(ev);
   $("#evLoc").textContent = p.location || "";
   for (const el of $$('[data-row="loc"]', $("#dlgEvent"))) el.hidden = !p.location;

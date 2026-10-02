@@ -72,6 +72,7 @@ function occurrence(item, start, end, key) {
     end: allDay ? null : endTime.toJSDate().getTime(),
     location: item.location || "",
     description: item.description || "",
+    labels: item.component.getAllProperties("categories").flatMap((p) => p.getValues()).map((l) => String(l).trim()).filter(Boolean),
   };
 }
 

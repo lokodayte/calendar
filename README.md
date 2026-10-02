@@ -227,7 +227,9 @@ An **ICS link** is a private web address that lets other apps read a calendar. Y
 1. Open **Settings**. On the left, click the calendar.
 2. Under **Integrate calendar**, copy the **Secret address in iCal format**. For a public calendar, you can use the **Public address in iCal format**.
 
-**Club Events (Parijat Das's calendar):** ask Parijat to send you the link using the steps above, then add it as a shared calendar with owner `Parijat Das`.
+**calendar.online (Parijat Das's Club & School Events):** use the calendar's **export** link (it starts with `https://export.calendar.online/ics/…`). Add `?past_months=3&future_months=36` to the end so it includes the whole school year. Use the link for the **whole** calendar, not one link per label: the website can hide labels itself (see the next tip).
+
+**Hiding some events (labels).** Many calendars tag events with labels. calendar.online calls them labels, Outlook calls them categories. After **Test link**, the form shows a **Show events with these labels** box with a tick for each label and how many events have it. Untick a label to hide those events on this calendar. For example, untick **Operations** on the public Club & School Events calendar, and add the Operations-only link again as a separate **Staff only** calendar. An event with several labels is hidden if *any* of its labels is unticked. Every event window shows its labels, so you can check what an event is tagged with.
 
 > ICS links are like passwords. Anyone with the link can read the calendar. The app keeps shared links on the server only, and staff never see them.
 
@@ -259,6 +261,7 @@ Everything is done in the **Admin** tab. Every change is recorded under **Recent
 | A change in the original calendar isn't showing | **Shared calendars → Refresh now** next to that calendar. |
 | Show a calendar on the public front page | Edit it and set **Who can see it** to **Public**. |
 | Keep a calendar for signed-in staff only | Set **Who can see it** to **Staff only** (the default for new calendars). |
+| Hide some events of a calendar (for example the "Operations" ones) | Edit it, click **Test link**, and untick those labels under **Show events with these labels**. The calendar row then shows **Hides: …**. |
 | Change the order in the sidebar | Use the ▲ ▼ arrows. |
 | Change the site title or front-page text | **Settings**. |
 | Review event suggestions | **Suggestions** tab (the red number shows how many are waiting). Add the event where it belongs — **Download for Outlook (.ics)** imports it in one step — then click **✓ Added** or **Not added**, with an optional note. |

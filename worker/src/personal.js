@@ -14,6 +14,9 @@ function hostOf(url) {
   try { return new URL(url).hostname; } catch { return ""; }
 }
 
+/** The labels an admin chose to hide for a shared calendar. */
+export const hiddenLabels = (cal) => { try { const a = JSON.parse(cal.hide_labels || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } };
+
 const sharedPublic = (c) => ({
   id: c.id, name: c.name, color: c.color, source: c.source, owner: c.owner,
   defaultOn: !!c.default_on, audience: c.audience,
@@ -60,9 +63,9 @@ export async function savePrefs(req, env, ctx, user) {
 
 /** GET /api/feeds/shared/:id — any signed-in person. */
 export async function sharedFeed(req, env, ctx, user, params) {
-  const cal = await env.DB.prepare("SELECT id, name, url, audience FROM calendars WHERE id = ?").bind(v.id(params.id)).first();
+  const cal = await env.DB.prepare("SELECT id, name, url, audience, hide_labels FROM calendars WHERE id = ?").bind(v.id(params.id)).first();
   if (!cal) fail(404, "That calendar was removed.");
-  try { return feedResponse(await getFeed(env, ctx, `shared:${cal.id}`, cal.url), req); }
+  try { return feedResponse(await getFeed(env, ctx, `shared:${cal.id}`, cal.url, { hideLabels: hiddenLabels(cal) }), req); }
   catch (err) { fail(502, `Couldn't load ${cal.name} right now: ${err.message}.`); }
 }
 
@@ -85,10 +88,10 @@ export async function publicInfo(req, env) {
 
 /** GET /api/public/feeds/:id — events of a public calendar. */
 export async function publicFeed(req, env, ctx, user, params) {
-  const cal = await env.DB.prepare("SELECT id, name, url FROM calendars WHERE id = ? AND audience = 'public'").bind(v.id(params.id)).first();
+  const cal = await env.DB.prepare("SELECT id, name, url, hide_labels FROM calendars WHERE id = ? AND audience = 'public'").bind(v.id(params.id)).first();
   if (!cal) fail(404, "That calendar isn't public.");
   try {
-    return feedResponse(await getFeed(env, ctx, `shared:${cal.id}`, cal.url), req, PUBLIC_CACHE["cache-control"]);
+    return feedResponse(await getFeed(env, ctx, `shared:${cal.id}`, cal.url, { hideLabels: hiddenLabels(cal) }), req, PUBLIC_CACHE["cache-control"]);
   } catch (err) { fail(502, `Couldn't load ${cal.name} right now.`); }
 }
 
@@ -230,9 +233,9 @@ export async function deleteMyFeed(req, env, ctx, user, params) {
 }
 
 /** Download a calendar right now, skipping the saved copy. Reports how many events it has. */
-export async function refreshNow(env, ctx, key, url, name) {
+export async function refreshNow(env, ctx, key, url, name, { hideLabels = [] } = {}) {
   try {
-    const r = await getFeed(env, ctx, key, url, { force: true });
+    const r = await getFeed(env, ctx, key, url, { force: true, hideLabels });
     if (r.stale) return json({ ok: false, error: `Couldn't reach ${name} right now: ${r.error}. Still showing the last saved copy.` });
     return json({ ok: true, events: summarizeIcs(r.text).events, fetchedAt: r.fetchedAt });
   } catch (err) {

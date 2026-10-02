@@ -224,6 +224,7 @@ export function initAdmin(root, ctx) {
           h("div", { class: "meta" },
             h("span", { class: "pill", style: { display: "inline-flex", gap: "5px", "align-items": "center" } }, h("span", { style: { display: "inline-flex", width: "13px" } }, sourceIcon(c.source)), SOURCES[c.source].label),
             h("span", { class: `pill ${c.audience === "public" ? "role-admin" : "role-staff"}`, text: c.audience === "public" ? "Public" : "Staff only" }),
+            c.hideLabels?.length ? h("span", { class: "pill", text: `Hides: ${c.hideLabels.join(", ")}` }) : null,
             c.defaultOn ? null : h("span", { class: "pill", text: "Off by default" }),
             c.owner ? h("span", { class: "muted small", text: `Contact: ${c.owner}` }) : null)),
         h("button", { class: "btn small", type: "button", text: "Refresh now", title: "Pull the latest changes from the original calendar now", onclick: (e) => refreshCalendar(c, e.currentTarget) }),
@@ -276,6 +277,24 @@ export function initAdmin(root, ctx) {
       [["public", "Public — anyone, on the front page (no sign-in)"], ["staff", "Staff only — people who sign in"]]
         .map(([v0, t]) => h("option", { value: v0, text: t, selected: (c.audience === "public" ? "public" : "staff") === v0 })));
     const testOut = h("div", { class: "test-result", hidden: true });
+    // Labels (categories) found in the calendar. Unticked = hidden on this calendar.
+    const hidden = new Set(c.hideLabels || []);
+    const labelBox = h("div", { class: "label-box" });
+    const drawLabels = (labels) => {
+      const names = [...new Set([...labels.map((l) => l.name), ...hidden])];
+      if (!names.length) { labelBox.hidden = true; return; }
+      labelBox.hidden = false;
+      const counts = new Map(labels.map((l) => [l.name, l.count]));
+      fill(labelBox,
+        h("span", { class: "label", text: "Show events with these labels" }),
+        h("p", { class: "muted small", text: "Untick a label to hide its events on this calendar — for example, untick “Operations” on a public calendar." }),
+        h("div", { class: "label-ticks" }, names.map((n) => {
+          const box = h("input", { type: "checkbox", checked: !hidden.has(n) });
+          box.addEventListener("change", () => { box.checked ? hidden.delete(n) : hidden.add(n); });
+          return h("label", { class: "check" }, box, h("span", { text: counts.has(n) ? `${n} (${counts.get(n)})` : n }));
+        })));
+    };
+    drawLabels([]);
     const err = h("p", { class: "err", hidden: true });
     const testBtn = h("button", { class: "btn", type: "button", text: "Test link" });
 
@@ -290,6 +309,7 @@ export function initAdmin(root, ctx) {
         if (!r.ok) { testOut.className = "test-result bad"; testOut.textContent = r.error; return; }
         fill(testOut, h("b", { text: `It works: found ${r.events} event${r.events === 1 ? "" : "s"}.` }));
         if (!sourceTouched) source.value = r.source;
+        drawLabels(r.labels || []);
         if (r.titles.length) {
           testOut.append(
             h("p", { class: "muted small", style: { margin: "8px 0 0" }, text: "Some event titles from this calendar:" }),
@@ -308,6 +328,7 @@ export function initAdmin(root, ctx) {
         testOut,
         field("Source", source, "Detected from the link. Change it if it's wrong."),
         field("Who can see it", audience, "Public calendars show on the front page for anyone. The link itself is never shown to anyone."),
+        labelBox,
         field("Owner or contact (optional)", owner),
         h("div", {}, h("span", { class: "label", text: "Color" }), colors),
         h("label", { class: "check" }, defaultOn, h("span", { text: "On by default for staff (each person can still turn it off)" })),
@@ -316,7 +337,7 @@ export function initAdmin(root, ctx) {
 
     save.onclick = () => busy(save, "Saving…", async () => {
       err.hidden = true;
-      const body = { name: name.value.trim(), color: picked.value, url: url.value.trim(), source: source.value, owner: owner.value.trim(), defaultOn: defaultOn.checked, audience: audience.value };
+      const body = { name: name.value.trim(), color: picked.value, url: url.value.trim(), source: source.value, owner: owner.value.trim(), defaultOn: defaultOn.checked, audience: audience.value, hideLabels: [...hidden] };
       if (!body.name) { err.textContent = "Give the calendar a name."; err.hidden = false; return; }
       if (!body.url) { err.textContent = "Paste the calendar's ICS link."; err.hidden = false; return; }
       try {
