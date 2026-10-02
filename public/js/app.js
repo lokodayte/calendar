@@ -352,7 +352,8 @@ function openEvent(ev) {
   $("#evStripe").style.setProperty("--c", color);
   $("#evSwatch").style.setProperty("--c", color);
   $("#evTitle").textContent = ev.title;
-  fill($("#evLabels"), (p.labels || []).map((l) => h("span", { class: "pill", text: l })));
+  const labelsEl = $("#evLabels"); // missing only on a page cached from before labels existed
+  if (labelsEl) fill(labelsEl, (p.labels || []).map((l) => h("span", { class: "pill", text: l })));
   $("#evWhen").textContent = whenText(ev);
   $("#evLoc").textContent = p.location || "";
   for (const el of $$('[data-row="loc"]', $("#dlgEvent"))) el.hidden = !p.location;
